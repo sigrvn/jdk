@@ -55,9 +55,8 @@ public:
 // - Eagerly Reclaim Humongous Objects (s)
 // - Update Derived Pointers (s)
 // - Clear Retained Region Data (on evacuation failure)
-// - Redirty Logged Cards
 // - Free Collection Set
-// - Resize TLABs
+// - Resize TLABs and Swap Card Table
 class G1PostEvacuateCollectionSetCleanupTask2 : public G1BatchedTask {
   class EagerlyReclaimHumongousObjectsTask;
 #if COMPILER2_OR_JVMCI
@@ -65,9 +64,8 @@ class G1PostEvacuateCollectionSetCleanupTask2 : public G1BatchedTask {
 #endif
 
   class ProcessEvacuationFailedRegionsTask;
-  class RedirtyLoggedCardsTask;
   class FreeCollectionSetTask;
-  class ResizeTLABsTask;
+  class ResizeTLABsAndSwapCardTableTask;
 
 public:
   G1PostEvacuateCollectionSetCleanupTask2(G1ParScanThreadStateSet* per_thread_states,

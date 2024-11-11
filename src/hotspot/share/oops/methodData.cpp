@@ -177,6 +177,21 @@ void CounterData::print_data_on(outputStream* st, const char* extra) const {
 }
 
 // ==================================================================
+// G1CounterData
+//
+// A G1CounterData corresponds to ...
+
+void G1CounterData::post_initialize(BytecodeStream* stream, MethodData* mdo) {
+  assert(stream->bci() == bci(), "wrong pos");
+}
+
+void G1CounterData::print_data_on(outputStream* st, const char* extra) const {
+  print_shared(st, "G1CounterData ", extra);
+  st->print("Samples(%zu) Same-Region (%zu) Zero-Val (%zu) Clean-Cards (%zu)", count(0), count(1), count(2), count(3));
+  st->cr();
+}
+
+// ==================================================================
 // JumpData
 //
 // A JumpData is used to access profiling information for a direct
@@ -669,6 +684,12 @@ MethodData* MethodData::allocate(ClassLoaderData* loader_data, const methodHandl
 
 int MethodData::bytecode_cell_count(Bytecodes::Code code) {
   switch (code) {
+  case Bytecodes::_putfield:
+    if (UseG1GC) {
+      return G1CounterData::static_cell_count();
+    } else {
+      return no_profile_data;
+    }
   case Bytecodes::_checkcast:
   case Bytecodes::_instanceof:
   case Bytecodes::_aastore:
@@ -993,6 +1014,13 @@ int MethodData::initialize_data(BytecodeStream* stream,
   DataLayout* data_layout = data_layout_at(data_index);
   Bytecodes::Code c = stream->code();
   switch (c) {
+  case Bytecodes::_putfield: {
+    if (UseG1GC) {
+      cell_count = G1CounterData::static_cell_count();
+      tag = DataLayout::g1counter_data_tag;
+    }
+    break;
+  }
   case Bytecodes::_checkcast:
   case Bytecodes::_instanceof:
   case Bytecodes::_aastore:
@@ -1127,6 +1155,8 @@ int DataLayout::cell_count() {
     return BitData::static_cell_count();
   case DataLayout::counter_data_tag:
     return CounterData::static_cell_count();
+  case DataLayout::g1counter_data_tag:
+    return G1CounterData::static_cell_count();
   case DataLayout::jump_data_tag:
     return JumpData::static_cell_count();
   case DataLayout::receiver_type_data_tag:
@@ -1161,6 +1191,8 @@ ProfileData* DataLayout::data_in() {
     return new BitData(this);
   case DataLayout::counter_data_tag:
     return new CounterData(this);
+  case DataLayout::g1counter_data_tag:
+    return new G1CounterData(this);
   case DataLayout::jump_data_tag:
     return new JumpData(this);
   case DataLayout::receiver_type_data_tag:
@@ -1560,6 +1592,7 @@ void MethodData::print_value_on(outputStream* st) const {
 void MethodData::print_data_on(outputStream* st) const {
   ConditionalMutexLocker ml(extra_data_lock(), !extra_data_lock()->owned_by_self(),
                             Mutex::_no_safepoint_check_flag);
+
   ResourceMark rm;
   ProfileData* data = first_data();
   if (_parameters_type_data_di != no_parameters) {

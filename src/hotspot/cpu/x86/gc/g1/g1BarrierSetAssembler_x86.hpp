@@ -89,7 +89,7 @@ class G1BarrierSetAssembler: public ModRefBarrierSetAssembler {
                                 Register thread,
                                 Register tmp,
                                 Register tmp2,
-                                bool new_val_maybe_null);
+                                uint8_t barrier_data);
 #endif // COMPILER2
 };
 

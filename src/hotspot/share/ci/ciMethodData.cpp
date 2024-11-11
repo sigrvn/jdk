@@ -367,6 +367,8 @@ ciProfileData* ciMethodData::data_from(DataLayout* data_layout) {
     return new ciBitData(data_layout);
   case DataLayout::counter_data_tag:
     return new ciCounterData(data_layout);
+  case DataLayout::g1counter_data_tag:
+    return new ciG1CounterData(data_layout);
   case DataLayout::jump_data_tag:
     return new ciJumpData(data_layout);
   case DataLayout::receiver_type_data_tag:

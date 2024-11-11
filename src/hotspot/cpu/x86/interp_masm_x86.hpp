@@ -160,6 +160,9 @@ class InterpreterMacroAssembler: public MacroAssembler {
   void push(Register r) { ((MacroAssembler*)this)->push(r); }
   void push(int32_t imm ) { ((MacroAssembler*)this)->push(imm); }
 
+  void pusha() { MacroAssembler::push_IU_state(); }
+  void popa() { MacroAssembler::pop_IU_state(); }
+
   void pop(TosState state);        // transition vtos -> state
   void push(TosState state);       // transition state -> vtos
 
@@ -268,6 +271,10 @@ class InterpreterMacroAssembler: public MacroAssembler {
   void profile_switch_default(Register mdp);
   void profile_switch_case(Register index_in_scratch, Register mdp,
                            Register scratch2);
+
+  void profile_oop_store(Address field, Register new_val);
+  void profile_putfield_fix_mdp();
+
 
   // Debugging
   // only if +VerifyOops && state == atos

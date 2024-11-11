@@ -3245,6 +3245,8 @@ void TemplateTable::putfield_or_static(int byte_no, bool is_static, RewriteContr
   putfield_or_static_helper(byte_no, is_static, rc, obj, off, tos_state);
 
   __ bind(Done);
+
+  __ profile_putfield_fix_mdp();
 }
 
 void TemplateTable::putfield_or_static_helper(int byte_no, bool is_static, RewriteControl rc,
@@ -3283,6 +3285,7 @@ void TemplateTable::putfield_or_static_helper(int byte_no, bool is_static, Rewri
   {
     __ pop(ztos);
     if (!is_static) pop_and_check_object(obj);
+    __ profile_oop_store(field, rax);
     __ access_store_at(T_BOOLEAN, IN_HEAP, field, rax, noreg, noreg, noreg);
     if (!is_static && rc == may_rewrite) {
       patch_bytecode(Bytecodes::_fast_zputfield, bc, rbx, true, byte_no);
@@ -3517,6 +3520,8 @@ void TemplateTable::fast_storefield(TosState state) {
   fast_storefield_helper(field, rax);
 
   __ bind(Done);
+
+  __ profile_putfield_fix_mdp();
 }
 
 void TemplateTable::fast_storefield_helper(Address field, Register rax) {
@@ -3524,6 +3529,7 @@ void TemplateTable::fast_storefield_helper(Address field, Register rax) {
   // access field
   switch (bytecode()) {
   case Bytecodes::_fast_aputfield:
+    __ profile_oop_store(field, rax);
     do_oop_store(_masm, field, rax);
     break;
   case Bytecodes::_fast_lputfield:

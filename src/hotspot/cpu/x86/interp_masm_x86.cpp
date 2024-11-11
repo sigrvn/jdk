@@ -1957,7 +1957,84 @@ void InterpreterMacroAssembler::profile_switch_case(Register index,
   }
 }
 
+void InterpreterMacroAssembler::profile_oop_store(Address field, Register new_val) {
+  if (!UseG1GC) {
+    return;
+  }
+  if (!ProfileInterpreter) {
+    return;
+  }
 
+  Label profile_continue;
+
+  // rcx, rbx contain the field address
+  assert(field.base() == rcx, "should be");
+  assert(field.index() == rbx, "should be");
+  assert(field.disp() == 0, "should be");
+  // rax the new_val
+  assert(new_val == rax, "should be");
+
+  pusha(); // just in case, save everything.
+
+  Register addr = rcx;
+  // Register new_val = rax;
+  Register tmp = rbx;
+  Register mdp = rdx;
+  // If no method data exists, exit.
+  test_method_data_pointer(mdp, profile_continue);
+
+  lea(addr, field);  // now rbx is free as temp.
+
+  if (UseCompressedOops) {
+    decode_heap_oop_not_null(new_val);
+  }
+
+  movptr(tmp, addr);
+  xorptr(tmp, new_val);
+  shrptr(tmp, G1HeapRegion::LogOfHRGrainBytes);
+  setcc(Assembler::zero, tmp);
+  addptr(Address(mdp, in_bytes(G1CounterData::same_region_counter_offset())), tmp);
+
+  testptr(new_val, new_val);
+  setcc(Assembler::zero, tmp);
+  addptr(Address(mdp, in_bytes(G1CounterData::null_new_val_counter_offset())), tmp);
+
+  Register thread = LP64_ONLY(r15_thread) NOT_LP64(tmp);
+  NOT_LP64(get_thread(tmp));
+  movptr(tmp, Address(thread, G1ThreadLocalData::card_table_base_offset()));
+  shrptr(addr, G1CardTable::card_shift());
+  cmpb(Address(tmp, addr), G1CardTable::clean_card_val());
+  setcc(Assembler::notEqual, tmp);
+  addptr(Address(mdp, in_bytes(G1CounterData::clean_cards_counter_offset())), tmp);
+
+  bind(profile_continue);
+
+  popa();
+}
+
+void InterpreterMacroAssembler::profile_putfield_fix_mdp() {
+  if (!UseG1GC) {
+    return;
+  }
+  if (!ProfileInterpreter) {
+    return;
+  }
+
+  Label profile_continue;
+
+  Register mdp = rbx;
+
+  push(mdp); // Just in case.
+
+  // If no method data exists, go to profile_continue.
+  test_method_data_pointer(mdp, profile_continue);
+
+  addptr(Address(mdp, in_bytes(G1CounterData::visits_counter_offset())), 1);
+  update_mdp_by_constant(mdp, in_bytes(G1CounterData::counter_data_size()));
+
+  bind(profile_continue);
+  pop(mdp);
+}
 
 void InterpreterMacroAssembler::_interp_verify_oop(Register reg, TosState state, const char* file, int line) {
   if (state == atos) {

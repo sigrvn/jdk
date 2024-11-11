@@ -119,6 +119,7 @@ public:
     no_tag,
     bit_data_tag,
     counter_data_tag,
+    g1counter_data_tag,
     jump_data_tag,
     receiver_type_data_tag,
     virtual_call_data_tag,
@@ -288,6 +289,7 @@ class         VirtualCallData;
 class           VirtualCallTypeData;
 class       RetData;
 class       CallTypeData;
+class   G1CounterData;
 class   JumpData;
 class     BranchData;
 class   ArrayData;
@@ -343,7 +345,7 @@ protected:
   }
   void release_set_intptr_at(int index, intptr_t value);
   intptr_t intptr_at(int index) const {
-    assert(0 <= index && index < cell_count(), "oob");
+    assert(0 <= index && index < cell_count(), "oob %d %d", index, cell_count());
     return data()->cell_at(index);
   }
   void set_uint_at(int index, uint value) {
@@ -411,6 +413,7 @@ public:
   // Type checking
   virtual bool is_BitData()         const { return false; }
   virtual bool is_CounterData()     const { return false; }
+  virtual bool is_G1CounterData()   const { return false; }
   virtual bool is_JumpData()        const { return false; }
   virtual bool is_ReceiverTypeData()const { return false; }
   virtual bool is_VirtualCallData() const { return false; }
@@ -432,6 +435,10 @@ public:
   CounterData* as_CounterData() const {
     assert(is_CounterData(), "wrong type");
     return is_CounterData()     ? (CounterData*)    this : nullptr;
+  }
+  G1CounterData* as_G1CounterData() const {
+    assert(is_G1CounterData(), "wrong type");
+    return is_G1CounterData()   ? (G1CounterData*)  this : nullptr;
   }
   JumpData* as_JumpData() const {
     assert(is_JumpData(), "wrong type");
@@ -619,6 +626,61 @@ public:
   }
 
   void print_data_on(outputStream* st, const char* extra = nullptr) const;
+};
+
+// G1CounterData
+//
+// Four counters.
+class G1CounterData : public ProfileData {
+  friend class VMStructs;
+  friend class JVMCIVMStructs;
+protected:
+    enum {
+      count_off,
+      g1count_cell_count = 4
+    };
+
+  intptr_t count(int idx) const {
+    intptr_t raw_data = intptr_at(count_off + idx);
+    return raw_data;
+  }
+
+  enum CountIndexes {
+    Visits = 0,
+    SameRegion,
+    NullNewVal,
+    CleanCards
+  };
+
+  static ByteSize count_offset(CountIndexes idx) {
+    return cell_offset(count_off + idx);
+  }
+
+public:
+  G1CounterData(DataLayout* layout) : ProfileData(layout) {}
+
+  virtual bool is_G1CounterData() const { return true; }
+
+  static int static_cell_count() { return g1count_cell_count; }
+  int cell_count() const override { return G1CounterData::static_cell_count(); }
+
+  static ByteSize visits_counter_offset() { return count_offset(Visits); }
+  static ByteSize same_region_counter_offset() { return count_offset(SameRegion); }
+  static ByteSize null_new_val_counter_offset() { return count_offset(NullNewVal); }
+  static ByteSize clean_cards_counter_offset() { return count_offset(CleanCards); }
+
+  intptr_t visits_count() const { return count(Visits); }
+  intptr_t same_region_count() const { return count(SameRegion); }
+  intptr_t null_new_val_count() const { return count(NullNewVal); }
+  intptr_t clean_cards_count() const { return count(CleanCards); }
+
+  static ByteSize counter_data_size() {
+    return cell_offset(g1count_cell_count);
+  }
+
+  void post_initialize(BytecodeStream* stream, MethodData* mdo) override;
+
+  void print_data_on(outputStream* st, const char* extra = nullptr) const override;
 };
 
 // JumpData
@@ -2511,6 +2573,7 @@ public:
 
   void clean_method_data(bool always_clean);
   void clean_weak_method_links();
+
   Mutex* extra_data_lock() const { return const_cast<Mutex*>(&_extra_data_lock); }
   void check_extra_data_locked() const NOT_DEBUG_RETURN;
 };

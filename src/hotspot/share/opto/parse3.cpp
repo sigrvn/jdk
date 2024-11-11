@@ -37,6 +37,9 @@
 #include "runtime/deoptimization.hpp"
 #include "runtime/handles.inline.hpp"
 
+#include "logging/log.hpp"
+#include "logging/logStream.hpp"
+
 //=============================================================================
 // Helper methods for _get* and _put* bytecodes
 //=============================================================================
@@ -226,6 +229,17 @@ void Parse::do_put_xxx(Node* obj, ciField* field, bool is_field) {
       field_type = TypeOopPtr::make_from_klass(field->type()->as_klass());
     } else {
       field_type = Type::BOTTOM;
+    }
+  }
+  ciProfileData* profile = method()->method_data()->bci_to_data(bci());
+  if (profile != nullptr) {
+    LogTarget(Debug, gc, barrier) lt;
+    if (lt.is_enabled()) {
+      LogStream ls(lt);
+
+      ResourceMark rm;
+      ls.print("C2 profile data (field: %s): %s::%s @ %d - ", BOOL_TO_STR(field), method()->holder()->name()->as_utf8(), method()->name()->as_utf8(), bci());
+      profile->print_data_on(&ls);
     }
   }
   access_store_at(obj, adr, adr_type, val, field_type, bt, decorators);

@@ -50,6 +50,10 @@
 #include "utilities/growableArray.hpp"
 #include "utilities/macros.hpp"
 
+#include "logging/log.hpp"
+#include "logging/logTagSet.hpp"
+#include "logging/logStream.hpp"
+
 /*
  * Determine if the G1 pre-barrier can be removed. The pre-barrier is
  * required by SATB to make sure all objects live at the start of the
@@ -323,6 +327,73 @@ void G1BarrierSetC2::clone_at_expansion(PhaseMacroExpand* phase, ArrayCopyNode* 
   BarrierSetC2::clone_at_expansion(phase, ac);
 }
 
+static uint8_t get_barrier_filters(C2Access& access) {
+  ciProfileData* profile = nullptr;
+  if (access.is_parse_access()) {
+    C2ParseAccess& pa = static_cast<C2ParseAccess&>(access);
+    ciMethod* method = pa.kit()->method();
+    profile = method->method_data()->bci_to_data(pa.kit()->bci());
+  }
+
+  uint8_t use_all_filters = G1C2BarrierPostGenNullCheck | G1C2BarrierPostGenCrossCheck | G1C2BarrierPostGenCardCheck;
+  if (profile == nullptr) {
+    return use_all_filters;
+  }
+  if (!profile->is_G1CounterData()) {
+    return use_all_filters;
+  }
+  G1CounterData* data = profile->as_G1CounterData();
+
+  uint8_t result = 0;
+  bool too_few_samples = false;
+
+  double same_region_ratio = 0.0;
+  double null_new_val_ratio = 0.0;
+  double clean_card_ratio = 0.0;
+
+  if (data->visits_count() <= 10) {        // Too few samples.
+    result = use_all_filters;
+    too_few_samples = true;
+  } else {
+
+    same_region_ratio = clamp_unit((double)data->same_region_count() / data->visits_count());
+    null_new_val_ratio = clamp_unit((double)data->null_new_val_count() / data->visits_count());
+    clean_card_ratio = clamp_unit((double)data->clean_cards_count() / data->visits_count());
+
+    if (same_region_ratio > 0.1) {
+      result |= G1C2BarrierPostGenCrossCheck;
+    }
+    if (null_new_val_ratio > 0.1) {
+      result |= G1C2BarrierPostGenNullCheck;
+    }
+    if (clean_card_ratio > 0.9) {
+      result |= G1C2BarrierPostGenCardCheck;
+    }
+  }
+
+  C2ParseAccess& pa = static_cast<C2ParseAccess&>(access);
+  ciMethod* method = pa.kit()->method();
+
+  LogTarget(Debug, gc, barrier) lt;
+  if (lt.is_enabled()) {
+    LogStream ls(lt);
+
+    ResourceMark rm;
+
+    ls.print("C2 profile result: %s::%s @ %d - few-samples %s same-region %s (%.2f) null-new-val %s (%.2f) card-clean %s (%.2f)",
+             method->holder()->name()->as_utf8(), method->name()->as_utf8(),
+             pa.kit()->bci(),
+             BOOL_TO_STR(too_few_samples),
+             BOOL_TO_STR((result & G1C2BarrierPostGenCrossCheck) != 0), same_region_ratio,
+             BOOL_TO_STR((result & G1C2BarrierPostGenNullCheck) != 0), null_new_val_ratio,
+             BOOL_TO_STR((result & G1C2BarrierPostGenCardCheck) != 0), clean_card_ratio
+            );
+    profile->print_data_on(&ls);
+  }
+
+  return result;
+}
+
 Node* G1BarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) const {
   DecoratorSet decorators = access.decorators();
   bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
@@ -332,6 +403,8 @@ Node* G1BarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) co
   bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
   if (access.is_oop() && need_store_barrier) {
     access.set_barrier_data(get_store_barrier(access));
+    uint8_t barrier_filters = get_barrier_filters(access);
+    access.set_barrier_data(access.barrier_data() | barrier_filters);
     if (tightly_coupled_alloc) {
       assert(!use_ReduceInitialCardMarks(),
              "post-barriers are only needed for tightly-coupled initialization stores when ReduceInitialCardMarks is disabled");
@@ -414,6 +487,10 @@ bool G1BarrierStubC2::needs_post_barrier(const MachNode* node) {
 
 bool G1BarrierStubC2::post_new_val_maybe_null(const MachNode* node) {
   return (node->barrier_data() & G1C2BarrierPostNotNull) == 0;
+}
+
+uint8_t G1BarrierStubC2::barrier_data(const MachNode* node) {
+  return node->barrier_data();
 }
 
 G1PreBarrierStubC2::G1PreBarrierStubC2(const MachNode* node) : G1BarrierStubC2(node) {}
@@ -530,6 +607,15 @@ void G1BarrierSetC2::dump_barrier_data(const MachNode* mach, outputStream* st) c
   }
   if ((mach->barrier_data() & G1C2BarrierPostNotNull) != 0) {
     st->print("notnull ");
+  }
+  if ((mach->barrier_data() & G1C2BarrierPostGenCrossCheck) != 0) {
+    st->print("same-check ");
+  }
+  if ((mach->barrier_data() & G1C2BarrierPostGenNullCheck) != 0) {
+    st->print("not-null-check");
+  }
+  if ((mach->barrier_data() & G1C2BarrierPostGenCardCheck) != 0) {
+    st->print("card-check");
   }
 }
 #endif // !PRODUCT

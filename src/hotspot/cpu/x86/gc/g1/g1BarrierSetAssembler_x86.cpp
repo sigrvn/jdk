@@ -321,20 +321,33 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
                                             const Register tmp1,
                                             const Register tmp2,
                                             Label& done,
-                                            bool new_val_maybe_null) {
+                                            uint8_t barrier_data) {
 #ifdef _LP64
   assert(thread == r15_thread, "must be");
 #endif // _LP64
   assert_different_registers(store_addr, new_val, thread, tmp1 /*, tmp2 unused */, noreg);
 
-  // Does store cross heap regions?
-  __ movptr(tmp1, store_addr);                                    // tmp1 := store address
-  __ xorptr(tmp1, new_val);                                       // tmp1 := store address ^ new value
-  __ shrptr(tmp1, G1HeapRegion::LogOfHRGrainBytes);               // ((store address ^ new value) >> LogOfHRGrainBytes) == 0?
-  __ jcc(Assembler::equal, done);
+  bool gen_cross_region_check = ((barrier_data & G1C2BarrierPostGenCrossCheck) != 0) || !UseNewCode;
+  bool gen_null_new_val_check = ((barrier_data & G1C2BarrierPostGenNullCheck) != 0) || !UseNewCode;
+  bool gen_card_table_check = ((barrier_data & G1C2BarrierPostGenCardCheck) != 0) || !UseNewCode;
+
+  bool new_val_maybe_null = ((barrier_data & G1C2BarrierPostNotNull) != 0);
+
+  __ block_comment(err_msg("barrier parts: gen_same_region %d gen_null_new %d gen_card_table %d maybe_null %d", gen_cross_region_check, gen_null_new_val_check, gen_card_table_check, new_val_maybe_null));
+
+  if (gen_cross_region_check) {
+    __ block_comment("cross-region");
+
+    // Does store cross heap regions?
+    __ movptr(tmp1, store_addr);                                    // tmp1 := store address
+    __ xorptr(tmp1, new_val);                                       // tmp1 := store address ^ new value
+    __ shrptr(tmp1, G1HeapRegion::LogOfHRGrainBytes);               // ((store address ^ new value) >> LogOfHRGrainBytes) == 0?
+    __ jcc(Assembler::equal, done);
+  }
 
   // Crosses regions, storing null?
-  if (new_val_maybe_null) {
+  if (gen_null_new_val_check && new_val_maybe_null) {
+    __ block_comment("null-new-val");
     __ cmpptr(new_val, NULL_WORD);                                // new value == null?
     __ jcc(Assembler::equal, done);
   }
@@ -344,13 +357,18 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
 
   Address card_table_addr(thread, in_bytes(G1ThreadLocalData::card_table_base_offset()));
   __ addptr(tmp1, card_table_addr);                               // tmp1 := card address
-  if (UseCondCardMark) {
+  if (gen_card_table_check && UseCondCardMark) {
+    __ block_comment("card-table");
     __ cmpb(Address(tmp1, 0), G1CardTable::clean_card_val());     // *(card address) == clean_card_val?
     __ jcc(Assembler::notEqual, done);
   }
   // Storing a region crossing, non-null oop, card is clean.
   // Dirty card.
   __ movb(Address(tmp1, 0), G1CardTable::dirty_card_val());       // *(card address) := dirty_card_val
+}
+
+static uint8_t gen_all_barrier_parts() {
+  return G1C2BarrierPostNotNull | G1C2BarrierPostGenCrossCheck | G1C2BarrierPostGenNullCheck | G1C2BarrierPostGenCardCheck;
 }
 
 void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
@@ -360,7 +378,7 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
                                                   Register tmp,
                                                   Register tmp2) {
   Label done;
-  generate_post_barrier_fast_path(masm, store_addr, new_val, thread, tmp, tmp2, done, true /* new_val_may_be_null */);
+  generate_post_barrier_fast_path(masm, store_addr, new_val, thread, tmp, tmp2, done, gen_all_barrier_parts());
   __ bind(done);
 }
 
@@ -431,9 +449,9 @@ void G1BarrierSetAssembler::g1_write_barrier_post_c2(MacroAssembler* masm,
                                                      Register thread,
                                                      Register tmp,
                                                      Register tmp2,
-                                                     bool new_val_maybe_null) {
+                                                     uint8_t barrier_data) {
   Label done;
-  generate_post_barrier_fast_path(masm, store_addr, new_val, thread, tmp, tmp2, done, new_val_maybe_null);
+  generate_post_barrier_fast_path(masm, store_addr, new_val, thread, tmp, tmp2, done, barrier_data);
   __ bind(done);
 }
 
@@ -536,7 +554,7 @@ void G1BarrierSetAssembler::g1_write_barrier_post_c1(MacroAssembler* masm,
                                                      Register tmp1,
                                                      Register tmp2) {
   Label done;
-  generate_post_barrier_fast_path(masm, store_addr, new_val, thread, tmp1, tmp2, done, true /* new_val_maybe_null */);
+  generate_post_barrier_fast_path(masm, store_addr, new_val, thread, tmp1, tmp2, done, gen_all_barrier_parts());
   masm->bind(done);
 }
 

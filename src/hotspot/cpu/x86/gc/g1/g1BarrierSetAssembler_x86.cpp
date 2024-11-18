@@ -314,6 +314,22 @@ void G1BarrierSetAssembler::g1_write_barrier_pre(MacroAssembler* masm,
   __ bind(done);
 }
 
+static void generate_post_barrier_same_region_check(MacroAssembler* masm, const Register store_addr, const Register new_val, const Register tmp1, Label& done) {
+  __ block_comment("cross-region");
+
+  // Does store cross heap regions?
+  __ movptr(tmp1, store_addr);                                    // tmp1 := store address
+  __ xorptr(tmp1, new_val);                                       // tmp1 := store address ^ new value
+  __ shrptr(tmp1, G1HeapRegion::LogOfHRGrainBytes);               // ((store address ^ new value) >> LogOfHRGrainBytes) == 0?
+  __ jcc(Assembler::equal, done);
+}
+
+static void generate_post_barrier_null_new_value_check(MacroAssembler* masm, const Register new_val, const Register tmp1, Label& done) {
+  __ block_comment("null-new-val");
+  __ cmpptr(new_val, NULL_WORD);                                // new value == null?
+  __ jcc(Assembler::equal, done);
+}
+
 static void generate_post_barrier_fast_path(MacroAssembler* masm,
                                             const Register store_addr,
                                             const Register new_val,
@@ -330,26 +346,25 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   bool gen_cross_region_check = ((barrier_data & G1C2BarrierPostGenCrossCheck) != 0) || !UseNewCode;
   bool gen_null_new_val_check = ((barrier_data & G1C2BarrierPostGenNullCheck) != 0) || !UseNewCode;
   bool gen_card_table_check = ((barrier_data & G1C2BarrierPostGenCardCheck) != 0) || !UseNewCode;
+  bool null_check_first = ((barrier_data & G1C2BarrierPostNullCheckFirst) != 0) || !UseNewCode;
 
   bool new_val_maybe_null = ((barrier_data & G1C2BarrierPostNotNull) != 0);
 
-  __ block_comment(err_msg("barrier parts: gen_same_region %d gen_null_new %d gen_card_table %d maybe_null %d", gen_cross_region_check, gen_null_new_val_check, gen_card_table_check, new_val_maybe_null));
+  __ block_comment(err_msg("barrier parts: gen_same_region %d gen_null_new %d gen_card_table %d maybe_null %d swap_same_null %d", gen_cross_region_check, gen_null_new_val_check, gen_card_table_check, new_val_maybe_null, null_check_first));
 
-  if (gen_cross_region_check) {
-    __ block_comment("cross-region");
-
-    // Does store cross heap regions?
-    __ movptr(tmp1, store_addr);                                    // tmp1 := store address
-    __ xorptr(tmp1, new_val);                                       // tmp1 := store address ^ new value
-    __ shrptr(tmp1, G1HeapRegion::LogOfHRGrainBytes);               // ((store address ^ new value) >> LogOfHRGrainBytes) == 0?
-    __ jcc(Assembler::equal, done);
-  }
-
-  // Crosses regions, storing null?
-  if (gen_null_new_val_check && new_val_maybe_null) {
-    __ block_comment("null-new-val");
-    __ cmpptr(new_val, NULL_WORD);                                // new value == null?
-    __ jcc(Assembler::equal, done);
+  if (!null_check_first) {
+    if (gen_cross_region_check) {
+      generate_post_barrier_same_region_check(masm, store_addr, new_val, tmp1, done);
+    }
+    // Crosses regions, storing null?
+    if (gen_null_new_val_check && new_val_maybe_null) {
+      generate_post_barrier_null_new_value_check(masm, new_val, tmp1, done);
+    }
+  } else {
+    assert(gen_cross_region_check, "must be");
+    assert(gen_null_new_val_check, "must be");
+    generate_post_barrier_null_new_value_check(masm, new_val, tmp1, done);
+    generate_post_barrier_same_region_check(masm, store_addr, new_val, tmp1, done);
   }
 
   __ movptr(tmp1, store_addr);                                    // tmp1 := store address

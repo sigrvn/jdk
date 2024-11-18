@@ -369,6 +369,12 @@ static uint8_t get_barrier_filters(C2Access& access) {
     if (clean_card_ratio > 0.9) {
       result |= G1C2BarrierPostGenCardCheck;
     }
+    uint8_t cross_null_check_flags = G1C2BarrierPostGenCrossCheck | G1C2BarrierPostGenNullCheck;
+    if ((result & cross_null_check_flags) == cross_null_check_flags) {
+      if (null_new_val_ratio >= same_region_ratio) {
+        result |= G1C2BarrierPostNullCheckFirst;
+      }
+    }
   }
 
   C2ParseAccess& pa = static_cast<C2ParseAccess&>(access);

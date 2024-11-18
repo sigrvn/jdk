@@ -37,7 +37,7 @@ const int G1C2BarrierPostNotNull = 4;
 const int G1C2BarrierPostGenCrossCheck = 8;
 const int G1C2BarrierPostGenNullCheck  = 16;
 const int G1C2BarrierPostGenCardCheck = 32;
-const int G1C2BarrierPostNullCheckFirst = 64;
+const int G1C2BarrierPostNullCheckFirst = 64; // Probably not worth
 
 class G1BarrierStubC2 : public BarrierStubC2 {
 public:

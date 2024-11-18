@@ -346,10 +346,11 @@ static uint8_t get_barrier_filters(C2Access& access) {
 
   uint8_t result = 0;
   bool too_few_samples = false;
+  bool null_check_first = false;
 
   double same_region_ratio = 0.0;
   double null_new_val_ratio = 0.0;
-  double clean_card_ratio = 0.0;
+  double dirty_card_ratio = 0.0;
 
   if (data->visits_count() <= 10) {        // Too few samples.
     result = use_all_filters;
@@ -358,7 +359,7 @@ static uint8_t get_barrier_filters(C2Access& access) {
 
     same_region_ratio = clamp_unit((double)data->same_region_count() / data->visits_count());
     null_new_val_ratio = clamp_unit((double)data->null_new_val_count() / data->visits_count());
-    clean_card_ratio = clamp_unit((double)data->clean_cards_count() / data->visits_count());
+    dirty_card_ratio = 1.0 - clamp_unit((double)data->clean_cards_count() / data->visits_count());
 
     if (same_region_ratio > 0.1) {
       result |= G1C2BarrierPostGenCrossCheck;
@@ -366,13 +367,14 @@ static uint8_t get_barrier_filters(C2Access& access) {
     if (null_new_val_ratio > 0.1) {
       result |= G1C2BarrierPostGenNullCheck;
     }
-    if (clean_card_ratio > 0.9) {
+    if (dirty_card_ratio > 0.1) {
       result |= G1C2BarrierPostGenCardCheck;
     }
     uint8_t cross_null_check_flags = G1C2BarrierPostGenCrossCheck | G1C2BarrierPostGenNullCheck;
     if ((result & cross_null_check_flags) == cross_null_check_flags) {
       if (null_new_val_ratio >= same_region_ratio) {
         result |= G1C2BarrierPostNullCheckFirst;
+        null_check_first = true;
       }
     }
   }
@@ -386,13 +388,14 @@ static uint8_t get_barrier_filters(C2Access& access) {
 
     ResourceMark rm;
 
-    ls.print("C2 profile result: %s::%s @ %d - few-samples %s same-region %s (%.2f) null-new-val %s (%.2f) card-clean %s (%.2f)",
+    ls.print("C2 profile: %s::%s @ %d - few-samples %s (" INTPTR_FORMAT ") same-region %s (" INTPTR_FORMAT " %.2f) null-new-val %s (" INTPTR_FORMAT " %.2f) card-dirty %s (" INTPTR_FORMAT " %.2f) null-first %s",
              method->holder()->name()->as_utf8(), method->name()->as_utf8(),
              pa.kit()->bci(),
-             BOOL_TO_STR(too_few_samples),
-             BOOL_TO_STR((result & G1C2BarrierPostGenCrossCheck) != 0), same_region_ratio,
-             BOOL_TO_STR((result & G1C2BarrierPostGenNullCheck) != 0), null_new_val_ratio,
-             BOOL_TO_STR((result & G1C2BarrierPostGenCardCheck) != 0), clean_card_ratio
+             BOOL_TO_STR(too_few_samples), data->visits_count(),
+             BOOL_TO_STR((result & G1C2BarrierPostGenCrossCheck) != 0), data->same_region_count(), same_region_ratio,
+             BOOL_TO_STR((result & G1C2BarrierPostGenNullCheck) != 0), data->null_new_val_count(), null_new_val_ratio,
+             BOOL_TO_STR((result & G1C2BarrierPostGenCardCheck) != 0), data->clean_cards_count(), dirty_card_ratio,
+             BOOL_TO_STR(null_check_first)
             );
     profile->print_data_on(&ls);
   }

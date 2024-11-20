@@ -1974,6 +1974,8 @@ void InterpreterMacroAssembler::profile_oop_store(Address field, Register new_va
   // rax the new_val
   assert(new_val == rax, "should be");
 
+  block_comment("profile_oop_store {");
+
   pusha(); // just in case, save everything.
 
   Register addr = rcx;
@@ -2010,6 +2012,8 @@ void InterpreterMacroAssembler::profile_oop_store(Address field, Register new_va
   bind(profile_continue);
 
   popa();
+
+  block_comment("}");
 }
 
 void InterpreterMacroAssembler::profile_putfield_fix_mdp() {
@@ -2024,6 +2028,8 @@ void InterpreterMacroAssembler::profile_putfield_fix_mdp() {
 
   Register mdp = rbx;
 
+  block_comment("profile_putfield_fix_mdp {");
+
   push(mdp); // Just in case.
 
   // If no method data exists, go to profile_continue.
@@ -2034,6 +2040,8 @@ void InterpreterMacroAssembler::profile_putfield_fix_mdp() {
 
   bind(profile_continue);
   pop(mdp);
+
+  block_comment("}");
 }
 
 void InterpreterMacroAssembler::_interp_verify_oop(Register reg, TosState state, const char* file, int line) {

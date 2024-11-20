@@ -37,9 +37,6 @@
 #include "runtime/deoptimization.hpp"
 #include "runtime/handles.inline.hpp"
 
-#include "logging/log.hpp"
-#include "logging/logStream.hpp"
-
 //=============================================================================
 // Helper methods for _get* and _put* bytecodes
 //=============================================================================
@@ -231,7 +228,6 @@ void Parse::do_put_xxx(Node* obj, ciField* field, bool is_field) {
       field_type = Type::BOTTOM;
     }
   }
-
   access_store_at(obj, adr, adr_type, val, field_type, bt, decorators);
 
   if (is_field) {

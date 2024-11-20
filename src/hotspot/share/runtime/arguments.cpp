@@ -3735,7 +3735,6 @@ jint Arguments::apply_ergo() {
   // Clear flags not supported on zero.
   FLAG_SET_DEFAULT(ProfileInterpreter, false);
 #endif // ZERO
-  //FLAG_SET_DEFAULT(ProfileInterpreter, false);
 
   if (PrintAssembly && FLAG_IS_DEFAULT(DebugNonSafepoints)) {
     warning("PrintAssembly is enabled; turning on DebugNonSafepoints to gain additional output");

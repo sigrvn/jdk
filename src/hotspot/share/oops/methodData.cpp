@@ -684,6 +684,7 @@ MethodData* MethodData::allocate(ClassLoaderData* loader_data, const methodHandl
 
 int MethodData::bytecode_cell_count(Bytecodes::Code code) {
   switch (code) {
+  case Bytecodes::_putstatic:
   case Bytecodes::_putfield:
     if (UseG1GC) {
       return G1CounterData::static_cell_count();
@@ -1014,6 +1015,7 @@ int MethodData::initialize_data(BytecodeStream* stream,
   DataLayout* data_layout = data_layout_at(data_index);
   Bytecodes::Code c = stream->code();
   switch (c) {
+  case Bytecodes::_putstatic:
   case Bytecodes::_putfield: {
     if (UseG1GC) {
       cell_count = G1CounterData::static_cell_count();
@@ -1592,7 +1594,6 @@ void MethodData::print_value_on(outputStream* st) const {
 void MethodData::print_data_on(outputStream* st) const {
   ConditionalMutexLocker ml(extra_data_lock(), !extra_data_lock()->owned_by_self(),
                             Mutex::_no_safepoint_check_flag);
-
   ResourceMark rm;
   ProfileData* data = first_data();
   if (_parameters_type_data_di != no_parameters) {

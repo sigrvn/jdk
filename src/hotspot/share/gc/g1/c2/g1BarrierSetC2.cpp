@@ -347,6 +347,7 @@ static uint8_t barrier_data_from_profile(C2Access& access) {
       ls.print("C2 NO profile: ");
       char buf[1024];
       Thread::current()->as_Compiler_thread()->env()->task()->print_line_on_error(&ls, buf, 1024);
+      // FIXME: below crashes often for one or the other reason... :(
       //method->print_short_name(&ls);
       /*
                method->holder()->name()->get_symbol() == nullptr ? "{unknown}" : method->holder()->name()->as_utf8(),
@@ -519,7 +520,7 @@ bool G1BarrierStubC2::post_new_val_maybe_null(const MachNode* node) {
 }
 
 uint8_t G1BarrierStubC2::barrier_data(const MachNode* node) {
-  ShouldNotReachHere();
+  ShouldNotReachHere(); // FIXME: remove method?
   return node->barrier_data();
 }
 

@@ -2878,6 +2878,7 @@ void TemplateTable::putfield_or_static(int byte_no, bool is_static, RewriteContr
     __ pop(atos);
     if (!is_static) pop_and_check_object(obj);
     // Store into the field
+    __ profile_oop_store(field.base(), field.index(), r0);
     do_oop_store(_masm, field, r0, IN_HEAP);
     if (rc == may_rewrite) {
       patch_bytecode(Bytecodes::_fast_aputfield, bc, r1, true, byte_no);
@@ -3094,6 +3095,7 @@ void TemplateTable::fast_storefield(TosState state)
   // access field
   switch (bytecode()) {
   case Bytecodes::_fast_aputfield:
+    __ profile_oop_store(field.base(), field.index(), r0);
     do_oop_store(_masm, field, r0, IN_HEAP);
     break;
   case Bytecodes::_fast_lputfield:

@@ -294,6 +294,9 @@ class InterpreterMacroAssembler: public MacroAssembler {
   void profile_switch_case(Register index_in_scratch, Register mdp,
                            Register scratch2);
 
+  void profile_oop_store(Register addr_base, Register addr_index, Register new_val);
+  void profile_putfield_fix_mdp();
+
   void profile_obj_type(Register obj, const Address& mdo_addr);
   void profile_arguments_type(Register mdp, Register callee, Register tmp, bool is_virtual);
   void profile_return_type(Register mdp, Register ret, Register tmp);

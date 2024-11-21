@@ -275,7 +275,6 @@ class InterpreterMacroAssembler: public MacroAssembler {
   void profile_oop_store(Address field, Register new_val);
   void profile_putfield_fix_mdp();
 
-
   // Debugging
   // only if +VerifyOops && state == atos
 #define interp_verify_oop(reg, state) _interp_verify_oop(reg, state, __FILE__, __LINE__);

@@ -1390,6 +1390,93 @@ void InterpreterMacroAssembler::profile_switch_case(Register index,
   }
 }
 
+void InterpreterMacroAssembler::profile_oop_store(Register addr_base, Register addr_index, Register new_val) {
+  if (!UseG1GC) {
+    return;
+  }
+  if (!ProfileInterpreter) {
+    return;
+  }
+
+  Label profile_continue;
+
+  assert_different_registers(addr_base, addr_index, new_val, rscratch1);
+
+  block_comment("profile_oop_store {");
+
+  push(addr_base);
+  push(addr_index);
+  push(new_val);
+  push(rscratch1);
+  push(rscratch2);
+
+  Register mdp = rscratch1;
+  Register tmp = rscratch2;
+  // If no method data exists, exit.
+  test_method_data_pointer(mdp, profile_continue);
+
+  if (UseCompressedOops) {
+    decode_heap_oop_not_null(new_val);
+  }
+
+  xorptr(tmp, addr, new_val);
+  shrptr(tmp, tmp, G1HeapRegion::LogOfHRGrainBytes);
+  // FIXME:
+  csel(tmp, tmp, r0, Assembler::zero);;
+  setcc(Assembler::zero, tmp);
+  addptr(Address(mdp, in_bytes(G1CounterData::same_region_counter_offset())), tmp);
+
+  testptr(new_val, new_val);
+  setcc(Assembler::zero, tmp);
+  addptr(Address(mdp, in_bytes(G1CounterData::null_new_val_counter_offset())), tmp);
+
+  Register thread = LP64_ONLY(r15_thread) NOT_LP64(tmp);
+  NOT_LP64(get_thread(tmp));
+  movptr(tmp, Address(thread, G1ThreadLocalData::card_table_base_offset()));
+  shrptr(addr, G1CardTable::card_shift());
+  cmpb(Address(tmp, addr), G1CardTable::clean_card_val());
+  setcc(Assembler::notEqual, tmp);
+  addptr(Address(mdp, in_bytes(G1CounterData::clean_cards_counter_offset())), tmp);
+
+  bind(profile_continue);
+
+  pop(rscratch2);
+  pop(rscratch1);
+  pop(new_val);
+  pop(addr_index);
+  pop(addr_base);
+
+  block_comment("}");
+}
+
+void InterpreterMacroAssembler::profile_putfield_fix_mdp() {
+  if (!UseG1GC) {
+    return;
+  }
+  if (!ProfileInterpreter) {
+    return;
+  }
+
+  Label profile_continue;
+
+  Register mdp = rbx;
+
+  block_comment("profile_putfield_fix_mdp {");
+
+  push(mdp); // Just in case.
+
+  // If no method data exists, go to profile_continue.
+  test_method_data_pointer(mdp, profile_continue);
+
+  addptr(Address(mdp, in_bytes(G1CounterData::visits_counter_offset())), 1);
+  update_mdp_by_constant(mdp, in_bytes(G1CounterData::counter_data_size()));
+
+  bind(profile_continue);
+  pop(mdp);
+
+  block_comment("}");
+}
+
 void InterpreterMacroAssembler::_interp_verify_oop(Register reg, TosState state, const char* file, int line) {
   if (state == atos) {
     MacroAssembler::_verify_oop_checked(reg, "broken oop", file, line);

@@ -1584,7 +1584,8 @@ Node* GraphKit::store_to_memory(Node* ctl, Node* adr, Node *val, BasicType bt,
                                 bool unaligned,
                                 bool mismatched,
                                 bool unsafe,
-                                int barrier_data) {
+                                int barrier_data,
+                                int ext_barrier_data) {
   int adr_idx = C->get_alias_index(_gvn.type(adr)->isa_ptr());
   assert(adr_idx != Compile::AliasIdxTop, "use other store_to_memory factory" );
   const TypePtr* adr_type = nullptr;
@@ -1601,6 +1602,7 @@ Node* GraphKit::store_to_memory(Node* ctl, Node* adr, Node *val, BasicType bt,
     st->as_Store()->set_unsafe_access();
   }
   st->as_Store()->set_barrier_data(barrier_data);
+  st->as_Store()->set_ext_barrier_data(ext_barrier_data);
   st = _gvn.transform(st);
   set_memory(st, adr_idx);
   // Back-to-back stores can only remove intermediate store with DU info

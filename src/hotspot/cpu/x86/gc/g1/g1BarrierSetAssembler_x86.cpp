@@ -337,18 +337,18 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
                                             const Register tmp1,
                                             const Register tmp2,
                                             Label& done,
-                                            uint8_t barrier_data) {
+                                            uint8_t ext_barrier_data) {
 #ifdef _LP64
   assert(thread == r15_thread, "must be");
 #endif // _LP64
   assert_different_registers(store_addr, new_val, thread, tmp1 /*, tmp2 unused */, noreg);
 
-  bool gen_cross_region_check = ((barrier_data & G1C2BarrierPostGenCrossCheck) != 0) || !UseNewCode;
-  bool gen_null_new_val_check = ((barrier_data & G1C2BarrierPostGenNullCheck) != 0) || !UseNewCode;
-  bool gen_card_table_check = ((barrier_data & G1C2BarrierPostGenCardCheck) != 0) || !UseNewCode;
-  bool null_check_first = ((barrier_data & G1C2BarrierPostNullCheckFirst) != 0) || !UseNewCode;
+  bool gen_cross_region_check = ((ext_barrier_data & G1C2BarrierPostGenCrossCheck) != 0) || !UseNewCode;
+  bool gen_null_new_val_check = ((ext_barrier_data & G1C2BarrierPostGenNullCheck) != 0) || !UseNewCode;
+  bool gen_card_table_check = ((ext_barrier_data & G1C2BarrierPostGenCardCheck) != 0) || !UseNewCode;
+  bool null_check_first = ((ext_barrier_data & G1C2BarrierPostNullCheckFirst) != 0) || !UseNewCode;
 
-  bool new_val_maybe_null = ((barrier_data & G1C2BarrierPostNotNull) != 0);
+  bool new_val_maybe_null = ((ext_barrier_data & G1C2BarrierPostNotNull) != 0);
 
   __ block_comment(err_msg("barrier parts: gen_same_region %d gen_null_new %d gen_card_table %d maybe_null %d swap_same_null %d", gen_cross_region_check, gen_null_new_val_check, gen_card_table_check, new_val_maybe_null, null_check_first));
 

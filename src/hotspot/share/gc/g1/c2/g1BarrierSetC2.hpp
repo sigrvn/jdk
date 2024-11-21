@@ -46,6 +46,7 @@ public:
   static bool post_new_val_maybe_null(const MachNode* node);
 
   static uint8_t barrier_data(const MachNode* node);
+  static uint8_t ext_barrier_data(const MachNode* node);
 
   G1BarrierStubC2(const MachNode* node);
   virtual void emit_code(MacroAssembler& masm) = 0;

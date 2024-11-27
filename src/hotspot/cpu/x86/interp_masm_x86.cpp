@@ -1976,7 +1976,10 @@ void InterpreterMacroAssembler::profile_oop_store(Address field, Register new_va
 
   block_comment("profile_oop_store {");
 
-  pusha(); // just in case, save everything.
+  push(rax);
+  push(rbx);
+  push(rcx);
+  push(rdx);
 
   Register addr = rcx;
   // Register new_val = rax;
@@ -2011,7 +2014,10 @@ void InterpreterMacroAssembler::profile_oop_store(Address field, Register new_va
 
   bind(profile_continue);
 
-  popa();
+  pop(rdx);
+  pop(rcx);
+  pop(rbx);
+  pop(rax);
 
   block_comment("}");
 }

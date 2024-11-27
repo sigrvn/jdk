@@ -80,6 +80,7 @@ class ProfileData;
 class DataLayout {
   friend class VMStructs;
   friend class JVMCIVMStructs;
+  friend class CombinedData;
 
 private:
   // Every data layout begins with a header.  This header
@@ -120,6 +121,7 @@ public:
     bit_data_tag,
     counter_data_tag,
     g1counter_data_tag,
+    combined_data_tag,
     jump_data_tag,
     receiver_type_data_tag,
     virtual_call_data_tag,
@@ -306,6 +308,8 @@ class ProfileData : public ResourceObj {
   friend class TypeEntries;
   friend class ReturnTypeEntry;
   friend class TypeStackSlotEntries;
+  friend class CombinedData;
+
 private:
   enum {
     tab_width_one = 16,
@@ -388,6 +392,10 @@ protected:
   }
 
   ProfileData(DataLayout* data) {
+      set_data(data);
+  }
+
+  void set_data(DataLayout* data) {
     _data = data;
   }
 
@@ -414,6 +422,7 @@ public:
   virtual bool is_BitData()         const { return false; }
   virtual bool is_CounterData()     const { return false; }
   virtual bool is_G1CounterData()   const { return false; }
+  virtual bool is_CombinedData()    const { return false; }
   virtual bool is_JumpData()        const { return false; }
   virtual bool is_ReceiverTypeData()const { return false; }
   virtual bool is_VirtualCallData() const { return false; }
@@ -436,7 +445,7 @@ public:
     assert(is_CounterData(), "wrong type");
     return is_CounterData()     ? (CounterData*)    this : nullptr;
   }
-  G1CounterData* as_G1CounterData() const {
+  virtual G1CounterData* as_G1CounterData() const {
     assert(is_G1CounterData(), "wrong type");
     return is_G1CounterData()   ? (G1CounterData*)  this : nullptr;
   }
@@ -444,7 +453,7 @@ public:
     assert(is_JumpData(), "wrong type");
     return is_JumpData()        ? (JumpData*)       this : nullptr;
   }
-  ReceiverTypeData* as_ReceiverTypeData() const {
+  virtual ReceiverTypeData* as_ReceiverTypeData() const {
     assert(is_ReceiverTypeData(), "wrong type");
     return is_ReceiverTypeData() ? (ReceiverTypeData*)this : nullptr;
   }
@@ -533,8 +542,8 @@ protected:
   };
   enum { bit_cell_count = 0 };  // no additional data fields needed.
 public:
-  BitData(DataLayout* layout) : ProfileData(layout) {
-  }
+  BitData(DataLayout* layout) : ProfileData(layout) { }
+  BitData() : ProfileData() { }
 
   virtual bool is_BitData() const { return true; }
 
@@ -591,6 +600,7 @@ protected:
   };
 public:
   CounterData(DataLayout* layout) : BitData(layout) {}
+  CounterData() : BitData() {}
 
   virtual bool is_CounterData() const { return true; }
 
@@ -658,6 +668,7 @@ protected:
 
 public:
   G1CounterData(DataLayout* layout) : ProfileData(layout) {}
+  G1CounterData() : ProfileData() {}
 
   virtual bool is_G1CounterData() const { return true; }
 
@@ -1197,8 +1208,10 @@ public:
   ReceiverTypeData(DataLayout* layout) : CounterData(layout) {
     assert(layout->tag() == DataLayout::receiver_type_data_tag ||
            layout->tag() == DataLayout::virtual_call_data_tag ||
-           layout->tag() == DataLayout::virtual_call_type_data_tag, "wrong type");
+           layout->tag() == DataLayout::virtual_call_type_data_tag, "wrong type %d", layout->tag());
   }
+
+  ReceiverTypeData() : CounterData() {}
 
   virtual bool is_ReceiverTypeData() const { return true; }
 
@@ -1283,6 +1296,45 @@ public:
 
   void print_receiver_data_on(outputStream* st) const;
   void print_data_on(outputStream* st, const char* extra = nullptr) const;
+};
+
+
+// CombinedData
+//
+// ....
+class CombinedData : public ProfileData {
+  friend class VMStructs;
+  friend class JVMCIVMStructs;
+
+  G1CounterData _g1_counter;
+  ReceiverTypeData _receiver_data;
+
+public:
+  CombinedData(DataLayout* layout);
+
+  virtual bool is_CombinedData() const { return true; }
+  virtual bool is_G1CounterData() const { return _g1_counter.is_G1CounterData(); }
+  virtual bool is_ReceiverTypeData() const { return _receiver_data.is_ReceiverTypeData(); }
+
+  virtual G1CounterData* as_G1CounterData() const {
+    assert(is_G1CounterData(), "wrong type");
+    return (G1CounterData*)&_g1_counter;
+  }
+  virtual ReceiverTypeData* as_ReceiverTypeData() const {
+    assert(is_ReceiverTypeData(), "wrong type");
+    return (ReceiverTypeData*)&_receiver_data;
+  }
+
+  static int static_cell_count() { return 2 * DataLayout::header_size_in_cells() + G1CounterData::static_cell_count() + ReceiverTypeData::static_cell_count(); }
+  int cell_count() const override { return CombinedData::static_cell_count(); }
+
+  static ByteSize counter_data_size() {
+    return G1CounterData::counter_data_size() + ReceiverTypeData::receiver_type_data_size();
+  }
+
+  void post_initialize(BytecodeStream* stream, MethodData* mdo) override;
+
+  void print_data_on(outputStream* st, const char* extra = nullptr) const override;
 };
 
 // VirtualCallData

@@ -24,6 +24,7 @@
 
 #include "precompiled.hpp"
 #include "asm/macroAssembler.inline.hpp"
+#include "ci/ciMethodData.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -258,6 +259,7 @@ void G1BarrierSetAssembler::g1_write_barrier_pre(MacroAssembler* masm,
 #ifdef _LP64
   assert(thread == r15_thread, "must be");
 #endif // _LP64
+  if (XXXSkipPreBarrier) return;
 
   Label done;
   Label runtime;
@@ -431,6 +433,8 @@ void G1BarrierSetAssembler::g1_write_barrier_pre_c2(MacroAssembler* masm,
     assert_different_registers(obj, pre_val, tmp);
   }
 
+  if (XXXSkipPreBarrier) return;
+
   stub->initialize_registers(obj, pre_val, thread, tmp);
 
   generate_pre_barrier_fast_path(masm, thread);
@@ -562,6 +566,50 @@ void G1BarrierSetAssembler::gen_pre_barrier_stub(LIR_Assembler* ce, G1PreBarrier
 
 #undef __
 
+#define __ masm->
+
+void G1BarrierSetAssembler::g1_write_barrier_post_profile(ciMethodData* md,
+                                                          int bci,
+                                                          MacroAssembler* masm,
+                                                          Register store_addr,
+                                                          Register new_val,
+                                                          Register thread,
+                                                          Register tmp1,
+                                                          Register tmp2) {
+  assert(md != nullptr, "must be");
+
+  ciProfileData* data = md->bci_to_data(bci);
+  assert(data != nullptr, "must be");
+  assert(data->is_G1CounterData(), "must be");
+
+  assert_different_registers(store_addr, new_val, thread, tmp1, tmp2);
+
+  Register mdp = tmp2;
+  __ mov_metadata(mdp, md->constant_encoding());
+  __ increment(Address(mdp, md->byte_offset_of_slot(data, G1CounterData::visits_counter_offset())));
+
+  __ movptr(tmp1, new_val);
+  if (UseCompressedOops) {
+    __ decode_heap_oop_not_null(tmp1);
+  }
+  __ xorptr(tmp1, store_addr);
+  __ shrptr(tmp1, G1HeapRegion::LogOfHRGrainBytes);
+  __ setcc(Assembler::zero, tmp1);
+  __ addptr(Address(mdp, md->byte_offset_of_slot(data, G1CounterData::same_region_counter_offset())), tmp1); // How many same-region pointers
+  __ testptr(new_val, new_val);
+  __ setcc(Assembler::zero, tmp1);
+  __ addptr(Address(mdp, md->byte_offset_of_slot(data, G1CounterData::null_new_val_counter_offset())), tmp1); // How many zeros
+
+  __ movptr(tmp1, Address(thread, in_bytes(G1ThreadLocalData::card_table_base_offset())));
+  __ push(tmp2);
+  __ movptr(tmp2, store_addr);
+  __ shrptr(tmp2, G1CardTable::card_shift());
+  __ cmpb(Address(tmp1, tmp2), G1CardTable::clean_card_val());
+  __ setcc(Assembler::equal, tmp1);
+  __ pop(tmp2);
+  __ addptr(Address(mdp, md->byte_offset_of_slot(data, G1CounterData::clean_cards_counter_offset())), tmp1); // How many clean cards
+}
+
 void G1BarrierSetAssembler::g1_write_barrier_post_c1(MacroAssembler* masm,
                                                      Register store_addr,
                                                      Register new_val,
@@ -570,8 +618,10 @@ void G1BarrierSetAssembler::g1_write_barrier_post_c1(MacroAssembler* masm,
                                                      Register tmp2) {
   Label done;
   generate_post_barrier_fast_path(masm, store_addr, new_val, thread, tmp1, tmp2, done, gen_all_barrier_parts());
-  masm->bind(done);
+  __ bind(done);
 }
+
+#undef __
 
 #define __ sasm->
 

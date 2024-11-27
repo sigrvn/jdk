@@ -300,7 +300,7 @@ uint G1BarrierSetC2::estimated_barrier_size(const Node* node) const {
   uint8_t barrier_data = MemNode::barrier_data(node);
   uint nodes = 0;
   if ((barrier_data & G1C2BarrierPre) != 0) {
-    nodes += UseNewCode3 ? 4 : 50;
+    nodes += XXXSkipPreBarrier ? 0 : 50;
   }
   if ((barrier_data & G1C2BarrierPost) != 0) {
     // Approximate the number of nodes needed with the number of Assembly instructions
@@ -392,7 +392,7 @@ static uint8_t barrier_data_from_profile(C2Access& access) {
     }
     uint8_t cross_null_check_flags = G1C2BarrierPostGenCrossCheck | G1C2BarrierPostGenNullCheck;
     if ((result & cross_null_check_flags) == cross_null_check_flags) {
-      if (null_new_val_ratio >= same_region_ratio) {
+      if (null_new_val_ratio > same_region_ratio) {
         result |= G1C2BarrierPostNullCheckFirst;
         null_check_first = true;
       }
@@ -643,6 +643,7 @@ void G1BarrierSetC2::dump_barrier_data(const MachNode* mach, outputStream* st) c
   if ((mach->barrier_data() & G1C2BarrierPostNotNull) != 0) {
     st->print("notnull ");
   }
+  /* // FIXME: tests will fail with these additional strings :(
   if ((mach->ext_barrier_data() & G1C2BarrierPostGenCrossCheck) != 0) {
     st->print("same-check ");
   }
@@ -651,6 +652,6 @@ void G1BarrierSetC2::dump_barrier_data(const MachNode* mach, outputStream* st) c
   }
   if ((mach->ext_barrier_data() & G1C2BarrierPostGenCardCheck) != 0) {
     st->print("card-check");
-  }
+  }*/
 }
 #endif // !PRODUCT

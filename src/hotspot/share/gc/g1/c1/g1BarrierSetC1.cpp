@@ -56,6 +56,7 @@ void G1BarrierSetC1::pre_barrier(LIRAccess& access, LIR_Opr addr_opr,
   LIRGenerator* gen = access.gen();
   DecoratorSet decorators = access.decorators();
 
+  if (XXXSkipPreBarrier) return;
   // First we test whether marking is in progress.
   BasicType flag_type;
   bool patch = (decorators & C1_NEEDS_PATCHING) != 0;
@@ -198,52 +199,6 @@ public:
     }
   }
 
-  void emit_profile_code(C1_MacroAssembler* masm, Register mdp, Register addr, Register new_val, Register thread, Register tmp1, Register tmp2) {
-    if (_method == nullptr) {
-      return;
-    }
-  
-    ciMethodData* md = _method->method_data_or_null();
-    if (md == nullptr) {
-      return;
-    }
-
-    assert_different_registers(mdp, addr, new_val, thread, tmp1, tmp2);
-
-    ciProfileData* data = md->bci_to_data(_bci);
-    if (data == nullptr) {
-      ResourceMark rm;
-      // FIXME: why does C1 not have profile data, i.e. "invents" some code or something?
-      log_debug(gc, barrier)("C1: no profile data for %s::%s() at bci %d (line %d)", _method->holder()->name()->as_utf8(), _method->name()->as_utf8(), _bci, _method->line_number_from_bci(_bci));
-      return;
-    }
-    assert(data->is_G1CounterData(), "must be");
-
-    masm->mov_metadata(mdp, md->constant_encoding());
-    masm->incrementq(Address(mdp, md->byte_offset_of_slot(data, G1CounterData::visits_counter_offset()))); // Just increment counter for now.
-
-    masm->movptr(tmp1, new_val);
-    if (UseCompressedOops) {
-      masm->decode_heap_oop_not_null(tmp1);
-    }
-    masm->xorptr(tmp1, addr);
-    masm->shrptr(tmp1, G1HeapRegion::LogOfHRGrainBytes);
-    masm->setcc(Assembler::zero, tmp1);
-    masm->addptr(Address(mdp, md->byte_offset_of_slot(data, G1CounterData::same_region_counter_offset())), tmp1); // How many same-region pointers
-
-    masm->testptr(new_val, new_val);
-    masm->setcc(Assembler::zero, tmp1);
-    masm->addptr(Address(mdp, md->byte_offset_of_slot(data, G1CounterData::null_new_val_counter_offset())), tmp1); // How many zeros
-
-    masm->movptr(tmp1, Address(thread, in_bytes(G1ThreadLocalData::card_table_base_offset())));
-    masm->movptr(tmp2, addr);
-    masm->shrptr(tmp2, G1CardTable::card_shift());
-    masm->cmpb(Address(tmp1, tmp2), G1CardTable::clean_card_val());
-    masm->setcc(Assembler::equal, tmp1);
-
-    masm->addptr(Address(mdp, md->byte_offset_of_slot(data, G1CounterData::clean_cards_counter_offset())), tmp1); // How many clean cards
-  }
-
   virtual void emit_code(LIR_Assembler* ce) {
     if (_info != nullptr) {
       ce->add_debug_info_for_null_check_here(_info);
@@ -266,9 +221,13 @@ public:
     }
 
     print_profile_data(_method, _bci);
-    emit_profile_code(ce->masm(), tmp1, addr, new_val, thread, tmp2, tmp3);
 
     G1BarrierSetAssembler* bs_asm = static_cast<G1BarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
+    if (_method != nullptr &&
+        _method->method_data_or_null() != nullptr &&
+        _method->method_data_or_null()->bci_to_data(_bci) != nullptr) {
+      bs_asm->g1_write_barrier_post_profile(_method->method_data(), _bci, ce->masm(), addr, new_val, thread, tmp1, tmp2);
+    }
     bs_asm->g1_write_barrier_post_c1(ce->masm(), addr, new_val, thread, tmp1, tmp2);
   }
 

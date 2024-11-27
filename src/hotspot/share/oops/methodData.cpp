@@ -192,6 +192,30 @@ void G1CounterData::print_data_on(outputStream* st, const char* extra) const {
 }
 
 // ==================================================================
+// CombinedData
+//
+// A CombinedData corresponds to ...
+
+CombinedData::CombinedData(DataLayout* layout) : ProfileData(layout), _g1_counter(), _receiver_data() {
+  _g1_counter.set_data((DataLayout*)&layout->_cells[0]);
+  assert(_g1_counter.is_G1CounterData(), "must be");
+  _receiver_data.set_data((DataLayout*)(&layout->_cells[0] + (in_bytes(_g1_counter.counter_data_size()) / sizeof(intptr_t))));
+  assert(_receiver_data.is_ReceiverTypeData(), "must be");
+}
+
+void CombinedData::post_initialize(BytecodeStream* stream, MethodData* mdo) {
+  assert(stream->bci() == bci(), "wrong pos");
+  _g1_counter.post_initialize(stream, mdo);
+  _receiver_data.post_initialize(stream, mdo);
+}
+
+void CombinedData::print_data_on(outputStream* st, const char* extra) const {
+  print_shared(st, "CombinedData ", extra);
+  _g1_counter.print_data_on(st);
+  _receiver_data.print_data_on(st);
+}
+
+// ==================================================================
 // JumpData
 //
 // A JumpData is used to access profiling information for a direct
@@ -693,11 +717,17 @@ int MethodData::bytecode_cell_count(Bytecodes::Code code) {
     }
   case Bytecodes::_checkcast:
   case Bytecodes::_instanceof:
-  case Bytecodes::_aastore:
     if (TypeProfileCasts) {
       return ReceiverTypeData::static_cell_count();
     } else {
       return BitData::static_cell_count();
+    }
+  case Bytecodes::_aastore:
+    if (TypeProfileCasts) {
+      return UseNewCode ? CombinedData::static_cell_count() : ReceiverTypeData::static_cell_count();
+    } else {
+      ShouldNotReachHere();
+      return false;
     }
   case Bytecodes::_invokespecial:
   case Bytecodes::_invokestatic:
@@ -1025,13 +1055,20 @@ int MethodData::initialize_data(BytecodeStream* stream,
   }
   case Bytecodes::_checkcast:
   case Bytecodes::_instanceof:
-  case Bytecodes::_aastore:
     if (TypeProfileCasts) {
       cell_count = ReceiverTypeData::static_cell_count();
       tag = DataLayout::receiver_type_data_tag;
     } else {
       cell_count = BitData::static_cell_count();
       tag = DataLayout::bit_data_tag;
+    }
+    break;
+  case Bytecodes::_aastore:
+    if (TypeProfileCasts) {
+      cell_count = UseNewCode ? CombinedData::static_cell_count() : ReceiverTypeData::static_cell_count();
+      tag = UseNewCode ? DataLayout::combined_data_tag : DataLayout::receiver_type_data_tag;
+    } else {
+      ShouldNotReachHere();
     }
     break;
   case Bytecodes::_invokespecial:
@@ -1130,7 +1167,15 @@ int MethodData::initialize_data(BytecodeStream* stream,
   if (cell_count >= 0) {
     assert(tag != DataLayout::no_tag, "bad tag");
     assert(bytecode_has_profile(c), "agree w/ BHP");
-    data_layout->initialize(tag, checked_cast<u2>(stream->bci()), cell_count);
+    u2 bci = checked_cast<u2>(stream->bci());
+    data_layout->initialize(tag, bci, cell_count);
+    if (tag ==  DataLayout::combined_data_tag) {
+      DataLayout* temp;
+      temp = data_layout_at(data_index + DataLayout::header_size_in_cells() * sizeof(intptr_t /* type of cell */));
+      temp->initialize(DataLayout::g1counter_data_tag, bci, G1CounterData::static_cell_count());
+      temp = data_layout_at(data_index + DataLayout::header_size_in_cells() * sizeof (intptr_t) + in_bytes(G1CounterData::counter_data_size()));
+      temp->initialize(DataLayout::receiver_type_data_tag, bci, ReceiverTypeData::static_cell_count());
+    }
     return DataLayout::compute_size_in_bytes(cell_count);
   } else {
     assert(!bytecode_has_profile(c), "agree w/ !BHP");
@@ -1159,6 +1204,8 @@ int DataLayout::cell_count() {
     return CounterData::static_cell_count();
   case DataLayout::g1counter_data_tag:
     return G1CounterData::static_cell_count();
+  case DataLayout::combined_data_tag:
+    return CombinedData::static_cell_count();
   case DataLayout::jump_data_tag:
     return JumpData::static_cell_count();
   case DataLayout::receiver_type_data_tag:
@@ -1195,6 +1242,8 @@ ProfileData* DataLayout::data_in() {
     return new CounterData(this);
   case DataLayout::g1counter_data_tag:
     return new G1CounterData(this);
+  case DataLayout::combined_data_tag:
+    return new CombinedData(this);
   case DataLayout::jump_data_tag:
     return new JumpData(this);
   case DataLayout::receiver_type_data_tag:
@@ -1230,6 +1279,9 @@ ProfileData* MethodData::next_data(ProfileData* current) const {
 
 DataLayout* MethodData::next_data_layout(DataLayout* current) const {
   int current_index = dp_to_di((address)current);
+  if (UseNewCode) {
+    tty->print_cr("%d: next_data_layout tag %d bci %d size %d", Thread::current()->osthread()->thread_id(), current->tag(), current->bci(), current->size_in_bytes());
+  }
   int next_index = current_index + current->size_in_bytes();
   if (out_of_bounds(next_index)) {
     return nullptr;

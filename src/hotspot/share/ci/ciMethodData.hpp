@@ -64,6 +64,11 @@ public:
   ciG1CounterData(DataLayout* layout) : G1CounterData(layout) {};
 };
 
+class ciCombinedData : public CombinedData {
+public:
+  ciCombinedData(DataLayout* layout) : CombinedData(layout) { }
+};
+
 class ciJumpData : public JumpData {
 public:
   ciJumpData(DataLayout* layout) : JumpData(layout) {};

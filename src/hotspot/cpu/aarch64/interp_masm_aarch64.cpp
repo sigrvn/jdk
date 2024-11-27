@@ -1422,7 +1422,7 @@ void InterpreterMacroAssembler::profile_oop_store(Register addr_base, Register a
   xorptr(tmp, addr, new_val);
   shrptr(tmp, tmp, G1HeapRegion::LogOfHRGrainBytes);
   // FIXME:
-  csel(tmp, tmp, r0, Assembler::zero);;
+  csel(tmp, tmp, r0, Assembler::zero);
   setcc(Assembler::zero, tmp);
   addptr(Address(mdp, in_bytes(G1CounterData::same_region_counter_offset())), tmp);
 

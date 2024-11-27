@@ -263,7 +263,7 @@ inline void G1CollectedHeap::unpin_object(JavaThread* thread, oop obj) {
 // belongs to a young region.
 inline void G1CollectedHeap::dirty_young_block(HeapWord* start, size_t word_size) {
   assert_heap_not_locked();
-  if (!UseNewCode2) { return; }
+  if (!XXXDoYoungPreDirty) { return; }
 
   // Assign the containing region to containing_hr so that we don't
   // have to keep calling heap_region_containing() in the

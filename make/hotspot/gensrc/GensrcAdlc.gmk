@@ -200,6 +200,7 @@ ifeq ($(call check-jvm-feature, compiler2), true)
     AD_SRC_FILES += $(call uniq, $(wildcard $(foreach d, $(AD_SRC_ROOTS), \
         $d/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/g1/g1_$(HOTSPOT_TARGET_CPU).ad \
         $d/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/g1/g1_$(HOTSPOT_TARGET_CPU_ARCH).ad \
+        $d/cpu/$(HOTSPOT_TARGET_CPU_ARCH)/gc/frankenstein/frankenstein_$(HOTSPOT_TARGET_CPU_ARCH).ad \
       )))
   endif
 

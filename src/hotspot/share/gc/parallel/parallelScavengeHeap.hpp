@@ -25,6 +25,7 @@
 #ifndef SHARE_GC_PARALLEL_PARALLELSCAVENGEHEAP_HPP
 #define SHARE_GC_PARALLEL_PARALLELSCAVENGEHEAP_HPP
 
+#include "gc/frankenstein/frankensteinBarrierSet.hpp"
 #include "gc/parallel/psGCAdaptivePolicyCounters.hpp"
 #include "gc/parallel/psOldGen.hpp"
 #include "gc/parallel/psYoungGen.hpp"

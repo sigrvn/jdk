@@ -99,7 +99,6 @@ void G1BarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembler* mas
 
   __ lea(end, Address(start, count, Address::lsl(LogBytesPerHeapOop))); // end = start + count << LogBytesPerHeapOop
   __ sub(end, end, BytesPerHeapOop);                                    // last element address to make inclusive
-
   __ lsr(start, start, CardTable::card_shift());
   __ lsr(end, end, CardTable::card_shift());
   __ sub(count, end, start);                                            // Number of bytes to mark

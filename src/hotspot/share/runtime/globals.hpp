@@ -131,9 +131,6 @@ const size_t minimumSymbolTableSize = 1024;
   product(bool, UseCompactObjectHeaders, false, EXPERIMENTAL,               \
           "Use compact 64-bit object headers in 64-bit VM")                 \
                                                                             \
-  product(bool, UseFrankensteinBarrier, false, EXPERIMENTAL,                \
-          "Use experimental GC-agnostic barriers")                          \
-                                                                            \
   product(int, ObjectAlignmentInBytes, 8,                                   \
           "Default object alignment in bytes, 8 is minimum")                \
           range(8, 256)                                                     \
@@ -161,6 +158,9 @@ const int ObjectAlignmentInBytes = 8;
                       product_pd,                                           \
                       range,                                                \
                       constraint)                                           \
+                                                                            \
+  product(bool, UseFrankensteinBarrier, false, EXPERIMENTAL,                \
+          "Use experimental GC-agnostic barriers")                          \
                                                                             \
   develop(bool, CheckCompressedOops, true,                                  \
           "Generate checks in encoding/decoding code in debug VM")          \

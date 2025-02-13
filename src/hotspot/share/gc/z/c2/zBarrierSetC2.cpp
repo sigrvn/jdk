@@ -218,7 +218,7 @@ Register ZLoadBarrierStubC2::ref() const {
 }
 
 address ZLoadBarrierStubC2::slow_path() const {
-  const uint8_t barrier_data = _node->barrier_data();
+  const BarrierData barrier_data = _node->barrier_data();
   DecoratorSet decorators = DECORATORS_NONE;
   if (barrier_data & ZBarrierStrong) {
     decorators |= ON_STRONG_OOP_REF;
@@ -286,7 +286,7 @@ void ZStoreBarrierStubC2::emit_code(MacroAssembler& masm) {
 }
 
 uint ZBarrierSetC2::estimated_barrier_size(const Node* node) const {
-  uint8_t barrier_data = MemNode::barrier_data(node);
+  BarrierData barrier_data = MemNode::barrier_data(node);
   assert(barrier_data != 0, "should be a barrier node");
   uint uncolor_or_color_size = node->is_Load() ? 1 : 2;
   if ((barrier_data & ZBarrierElided) != 0) {
@@ -352,7 +352,7 @@ static void set_barrier_data(C2Access& access) {
     return;
   }
 
-  uint8_t barrier_data = 0;
+  BarrierData barrier_data = 0;
 
   if (access.decorators() & ON_PHANTOM_OOP_REF) {
     barrier_data |= ZBarrierPhantom;

@@ -159,9 +159,6 @@ const int ObjectAlignmentInBytes = 8;
                       range,                                                \
                       constraint)                                           \
                                                                             \
-  product(bool, UseFrankensteinBarrier, false, EXPERIMENTAL,                \
-          "Use experimental GC-agnostic barriers")                          \
-                                                                            \
   develop(bool, CheckCompressedOops, true,                                  \
           "Generate checks in encoding/decoding code in debug VM")          \
                                                                             \

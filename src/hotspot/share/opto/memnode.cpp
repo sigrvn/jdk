@@ -861,7 +861,7 @@ const TypePtr* MemNode::calculate_adr_type(const Type* t, const TypePtr* cross_c
   }
 }
 
-uint8_t MemNode::barrier_data(const Node* n) {
+BarrierData MemNode::barrier_data(const Node* n) {
   if (n->is_LoadStore()) {
     return n->as_LoadStore()->barrier_data();
   } else if (n->is_Mem()) {
@@ -939,7 +939,7 @@ bool LoadNode::is_immutable_value(Node* adr) {
 //----------------------------LoadNode::make-----------------------------------
 // Polymorphic factory method:
 Node* LoadNode::make(PhaseGVN& gvn, Node* ctl, Node* mem, Node* adr, const TypePtr* adr_type, const Type* rt, BasicType bt, MemOrd mo,
-                     ControlDependency control_dependency, bool require_atomic_access, bool unaligned, bool mismatched, bool unsafe, uint8_t barrier_data) {
+                     ControlDependency control_dependency, bool require_atomic_access, bool unaligned, bool mismatched, bool unsafe, BarrierData barrier_data) {
   Compile* C = gvn.C;
 
   // sanity check the alias category against the created node type

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024 Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,49 +22,46 @@
  *
  */
 
-#ifndef SHARE_GC_G1_C2_G1BARRIERSETC2_HPP
-#define SHARE_GC_G1_C2_G1BARRIERSETC2_HPP
+#ifndef SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
+#define SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
 
-#include "gc/shared/c2/cardTableBarrierSetC2.hpp"
+#include "gc/shared/barrierData.hpp"
+#include "gc/shared/c2/barrierSetC2.hpp"
 
-class PhaseTransform;
-class Type;
-class TypeFunc;
-
-class G1BarrierStubC2 : public BarrierStubC2 {
+class AgnosticBarrierStubC2 : public BarrierStubC2 {
 public:
-  static bool needs_pre_barrier(const MachNode* node);
-  static bool needs_post_barrier(const MachNode* node);
-  static bool post_new_val_maybe_null(const MachNode* node);
-
-  G1BarrierStubC2(const MachNode* node);
+  AgnosticBarrierStubC2(const MachNode* node);
   virtual void emit_code(MacroAssembler& masm) = 0;
 };
 
-class G1PreBarrierStubC2 : public G1BarrierStubC2 {
+class AgnosticPreBarrierStubC2 : public AgnosticBarrierStubC2 {
 private:
-  Register _obj;
-  Register _pre_val;
-  Register _thread;
-  Register _tmp1;
-  Register _tmp2;
 
 protected:
-  G1PreBarrierStubC2(const MachNode* node);
+  AgnosticPreBarrierStubC2(const MachNode* node);
 
 public:
-  static bool needs_barrier(const MachNode* node);
-  static G1PreBarrierStubC2* create(const MachNode* node);
-  void initialize_registers(Register obj, Register pre_val, Register thread, Register tmp1 = noreg, Register tmp2 = noreg);
-  Register obj() const;
-  Register pre_val() const;
-  Register thread() const;
-  Register tmp1() const;
-  Register tmp2() const;
   virtual void emit_code(MacroAssembler& masm);
 };
 
-class G1BarrierSetC2: public CardTableBarrierSetC2 {
+class AgnosticPostBarrierStubC2 : public AgnosticBarrierStubC2 {
+private:
+
+protected:
+  AgnosticPostBarrierStubC2(const MachNode* node);
+
+public:
+  virtual void emit_code(MacroAssembler& masm);
+};
+
+
+// AgnosticBarrierSetC2 is an experimental universal barrier for all supported GC barriers for C2.
+// This specialized barrier set is generated using the -XX:+UseAgnosticBarriers feature flag.
+class AgnosticBarrierSetC2: public BarrierSetC2 {
+private:
+  void analyze_dominating_barriers_impl(Node_List& accesses, Node_List& access_dominators) const;
+  void analyze_dominating_barriers() const;
+
 protected:
   bool g1_can_remove_pre_barrier(GraphKit* kit,
                                  PhaseValues* phase,
@@ -76,7 +73,7 @@ protected:
                                   PhaseValues* phase, Node* store,
                                   Node* adr) const;
 
-  int get_store_barrier(C2Access& access) const;
+  BarrierData g1_get_store_barrier(C2Access& access) const;
 
   virtual Node* load_at_resolved(C2Access& access, const Type* val_type) const;
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
@@ -92,15 +89,20 @@ public:
   virtual bool expand_barriers(Compile* C, PhaseIterGVN& igvn) const;
   virtual uint estimated_barrier_size(const Node* node) const;
   virtual bool can_initialize_object(const StoreNode* store) const;
-  virtual void clone_at_expansion(PhaseMacroExpand* phase,
-                                  ArrayCopyNode* ac) const;
+  virtual bool array_copy_requires_gc_barriers(bool tightly_coupled_alloc,
+                                               BasicType type,
+                                               bool is_clone,
+                                               bool is_clone_instance,
+                                               ArrayCopyPhase phase) const;
   virtual void* create_barrier_state(Arena* comp_arena) const;
   virtual void emit_stubs(CodeBuffer& cb) const;
   virtual void late_barrier_analysis() const;
+
+  bool use_ReduceInitialCardMarks() const;
 
 #ifndef PRODUCT
   virtual void dump_barrier_data(const MachNode* mach, outputStream* st) const;
 #endif
 };
 
-#endif // SHARE_GC_G1_C2_G1BARRIERSETC2_HPP
+#endif // SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP

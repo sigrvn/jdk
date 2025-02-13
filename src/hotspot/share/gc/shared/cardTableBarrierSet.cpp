@@ -41,6 +41,7 @@
 #endif
 #ifdef COMPILER2
 #include "gc/shared/c2/cardTableBarrierSetC2.hpp"
+#include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
 #endif
 
 class CardTableBarrierSetC1;
@@ -66,7 +67,7 @@ CardTableBarrierSet::CardTableBarrierSet(BarrierSetAssembler* barrier_set_assemb
 CardTableBarrierSet::CardTableBarrierSet(CardTable* card_table) :
   ModRefBarrierSet(make_barrier_set_assembler<CardTableBarrierSetAssembler>(),
                    make_barrier_set_c1<CardTableBarrierSetC1>(),
-                   make_barrier_set_c2<CardTableBarrierSetC2>(),
+                   UseAgnosticBarriers ? make_barrier_set_c2<AgnosticBarrierSetC2>() : make_barrier_set_c2<CardTableBarrierSetC2>(),
                    BarrierSet::FakeRtti(BarrierSet::CardTableBarrierSet)),
   _defer_initial_card_mark(false),
   _card_table(card_table)

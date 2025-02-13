@@ -41,6 +41,7 @@ static void write_barrier_pre(MacroAssembler* masm,
                               Register tmp2,
                               RegSet preserve = RegSet(),
                               RegSet no_preserve = RegSet()) {
+  __ block_comment("=== write_barrier_pre START ===");
   if (!G1PreBarrierStubC2::needs_barrier(node)) {
     return;
   }
@@ -54,6 +55,7 @@ static void write_barrier_pre(MacroAssembler* masm,
     stub->dont_preserve(*reg);
   }
   g1_asm->g1_write_barrier_pre_c2(masm, obj, pre_val, rthread, tmp1, tmp2, stub);
+  __ block_comment("=== write_barrier_pre END ===");
 }
 
 static void write_barrier_post(MacroAssembler* masm,
@@ -62,6 +64,7 @@ static void write_barrier_post(MacroAssembler* masm,
                                Register new_val,
                                Register tmp1,
                                Register tmp2) {
+  __ block_comment("=== write_barrier_post START ===");
   if (!G1BarrierStubC2::needs_post_barrier(node)) {
     return;
   }
@@ -69,6 +72,7 @@ static void write_barrier_post(MacroAssembler* masm,
   G1BarrierSetAssembler* g1_asm = static_cast<G1BarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
   bool new_val_maybe_null = G1BarrierStubC2::post_new_val_maybe_null(node);
   g1_asm->g1_write_barrier_post_c2(masm, store_addr, new_val, rthread, tmp1, tmp2, new_val_maybe_null);
+  __ block_comment("=== write_barrier_post END ===");
 }
 
 %}
@@ -88,6 +92,7 @@ instruct g1StoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP
   ins_cost(INSN_COST);
   format %{ "str  $src, $mem\t# ptr" %}
   ins_encode %{
+    __ block_comment("g1StoreP");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -200,13 +205,14 @@ instruct g1StoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1EncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem (EncodeP src)));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
   format %{ "encode_heap_oop $tmp1, $src\n\t"
             "strw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("g1EncodePAndStoreN");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,

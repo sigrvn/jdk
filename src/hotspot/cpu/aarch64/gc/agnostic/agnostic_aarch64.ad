@@ -23,19 +23,19 @@
 
 source_hpp %{
 
-#include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/shared/gc_globals.hpp"
 
 %}
 
-instruct frankensteinStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreP mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
   format %{ "str  $src, $mem\t# ptr" %}
   ins_encode %{
+    __ block_comment("agnosticStoreP");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -52,9 +52,9 @@ instruct frankensteinStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp t
   ins_pipe(istore_reg_mem);
 %}
 
-instruct frankensteinStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreP mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
@@ -76,9 +76,9 @@ instruct frankensteinStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRe
   ins_pipe(pipe_class_memory);
 %}
 
-instruct frankensteinStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
@@ -107,9 +107,9 @@ instruct frankensteinStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp t
   ins_pipe(istore_reg_mem);
 %}
 
-instruct frankensteinStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
@@ -138,15 +138,16 @@ instruct frankensteinStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRe
   ins_pipe(pipe_class_memory);
 %}
 
-instruct frankensteinEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem (EncodeP src)));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
   format %{ "encode_heap_oop $tmp1, $src\n\t"
             "strw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("agnosticEncodePAndStoreN");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -168,9 +169,9 @@ instruct frankensteinEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, i
   ins_pipe(istore_reg_mem);
 %}
 
-instruct frankensteinEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem (EncodeP src)));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
@@ -198,9 +199,9 @@ instruct frankensteinEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp
   ins_pipe(pipe_class_memory);
 %}
 
-instruct frankensteinCompareAndExchangeP(iRegPNoSp res, indirect mem, iRegP oldval, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
+instruct agnosticCompareAndExchangeP(iRegPNoSp res, indirect mem, iRegP oldval, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndExchangeP mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
   ins_cost(2 * VOLATILE_REF_COST);
@@ -210,7 +211,7 @@ instruct frankensteinCompareAndExchangeP(iRegPNoSp res, indirect mem, iRegP oldv
     assert_different_registers($newval$$Register, $mem$$Register);
     // Pass $oldval to the pre-barrier (instead of loading from $mem), because
     // $oldval is the only value that can be overwritten.
-    // The same holds for frankensteinCompareAndSwapP and its Acq variant.
+    // The same holds for agnosticCompareAndSwapP and its Acq variant.
     write_barrier_pre(masm, this,
                       noreg /* obj */,
                       $oldval$$Register /* pre_val */,
@@ -229,9 +230,9 @@ instruct frankensteinCompareAndExchangeP(iRegPNoSp res, indirect mem, iRegP oldv
   ins_pipe(pipe_slow);
 %}
 
-instruct frankensteinCompareAndExchangePAcq(iRegPNoSp res, indirect mem, iRegP oldval, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
+instruct agnosticCompareAndExchangePAcq(iRegPNoSp res, indirect mem, iRegP oldval, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndExchangeP mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
   ins_cost(VOLATILE_REF_COST);
@@ -241,7 +242,7 @@ instruct frankensteinCompareAndExchangePAcq(iRegPNoSp res, indirect mem, iRegP o
     assert_different_registers($newval$$Register, $mem$$Register);
     // Pass $oldval to the pre-barrier (instead of loading from $mem), because
     // $oldval is the only value that can be overwritten.
-    // The same holds for frankensteinCompareAndSwapP and its Acq variant.
+    // The same holds for agnosticCompareAndSwapP and its Acq variant.
     write_barrier_pre(masm, this,
                       noreg /* obj */,
                       $oldval$$Register /* pre_val */,
@@ -260,9 +261,9 @@ instruct frankensteinCompareAndExchangePAcq(iRegPNoSp res, indirect mem, iRegP o
   ins_pipe(pipe_slow);
 %}
 
-instruct frankensteinCompareAndExchangeN(iRegNNoSp res, indirect mem, iRegN oldval, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticCompareAndExchangeN(iRegNNoSp res, indirect mem, iRegN oldval, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndExchangeN mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(2 * VOLATILE_REF_COST);
@@ -289,9 +290,9 @@ instruct frankensteinCompareAndExchangeN(iRegNNoSp res, indirect mem, iRegN oldv
   ins_pipe(pipe_slow);
 %}
 
-instruct frankensteinCompareAndExchangeNAcq(iRegNNoSp res, indirect mem, iRegN oldval, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticCompareAndExchangeNAcq(iRegNNoSp res, indirect mem, iRegN oldval, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndExchangeN mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
@@ -318,9 +319,9 @@ instruct frankensteinCompareAndExchangeNAcq(iRegNNoSp res, indirect mem, iRegN o
   ins_pipe(pipe_slow);
 %}
 
-instruct frankensteinCompareAndSwapP(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP oldval, rFlagsReg cr)
+instruct agnosticCompareAndSwapP(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP oldval, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndSwapP mem (Binary oldval newval)));
   match(Set res (WeakCompareAndSwapP mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
@@ -349,9 +350,9 @@ instruct frankensteinCompareAndSwapP(iRegINoSp res, indirect mem, iRegP newval, 
   ins_pipe(pipe_slow);
 %}
 
-instruct frankensteinCompareAndSwapPAcq(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP oldval, rFlagsReg cr)
+instruct agnosticCompareAndSwapPAcq(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP oldval, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndSwapP mem (Binary oldval newval)));
   match(Set res (WeakCompareAndSwapP mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
@@ -380,9 +381,9 @@ instruct frankensteinCompareAndSwapPAcq(iRegINoSp res, indirect mem, iRegP newva
   ins_pipe(pipe_slow);
 %}
 
-instruct frankensteinCompareAndSwapN(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegN oldval, rFlagsReg cr)
+instruct agnosticCompareAndSwapN(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegN oldval, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndSwapN mem (Binary oldval newval)));
   match(Set res (WeakCompareAndSwapN mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
@@ -412,11 +413,11 @@ instruct frankensteinCompareAndSwapN(iRegINoSp res, indirect mem, iRegN newval, 
   ins_pipe(pipe_slow);
 %}
 
-// This pattern is generated automatically from frankenstein_aarch64.m4.
+// This pattern is generated automatically from agnostic_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct frankensteinCompareAndSwapNAcq(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegN oldval, rFlagsReg cr)
+instruct agnosticCompareAndSwapNAcq(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegN oldval, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndSwapN mem (Binary oldval newval)));
   match(Set res (WeakCompareAndSwapN mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
@@ -446,11 +447,11 @@ instruct frankensteinCompareAndSwapNAcq(iRegINoSp res, indirect mem, iRegN newva
   ins_pipe(pipe_slow);
 %}
 
-// This pattern is generated automatically from frankenstein_aarch64.m4.
+// This pattern is generated automatically from agnostic_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct frankensteinGetAndSetP(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp preval, rFlagsReg cr)
+instruct agnosticGetAndSetP(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp preval, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set preval (GetAndSetP mem newval));
   effect(TEMP preval, TEMP tmp1, TEMP tmp2, KILL cr);
   ins_cost(2 * VOLATILE_REF_COST);
@@ -473,11 +474,11 @@ instruct frankensteinGetAndSetP(indirect mem, iRegP newval, iRegPNoSp tmp1, iReg
   ins_pipe(pipe_serial);
 %}
 
-// This pattern is generated automatically from frankenstein_aarch64.m4.
+// This pattern is generated automatically from agnostic_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct frankensteinGetAndSetPAcq(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp preval, rFlagsReg cr)
+instruct agnosticGetAndSetPAcq(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp preval, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set preval (GetAndSetP mem newval));
   effect(TEMP preval, TEMP tmp1, TEMP tmp2, KILL cr);
   ins_cost(VOLATILE_REF_COST);
@@ -500,11 +501,11 @@ instruct frankensteinGetAndSetPAcq(indirect mem, iRegP newval, iRegPNoSp tmp1, i
   ins_pipe(pipe_serial);
 %}
 
-// This pattern is generated automatically from frankenstein_aarch64.m4.
+// This pattern is generated automatically from agnostic_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct frankensteinGetAndSetN(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegNNoSp preval, rFlagsReg cr)
+instruct agnosticGetAndSetN(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegNNoSp preval, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set preval (GetAndSetN mem newval));
   effect(TEMP preval, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(2 * VOLATILE_REF_COST);
@@ -528,11 +529,11 @@ instruct frankensteinGetAndSetN(indirect mem, iRegN newval, iRegPNoSp tmp1, iReg
   ins_pipe(pipe_serial);
 %}
 
-// This pattern is generated automatically from frankenstein_aarch64.m4.
+// This pattern is generated automatically from agnostic_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct frankensteinGetAndSetNAcq(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegNNoSp preval, rFlagsReg cr)
+instruct agnosticGetAndSetNAcq(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegNNoSp preval, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
   match(Set preval (GetAndSetN mem newval));
   effect(TEMP preval, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
@@ -556,13 +557,13 @@ instruct frankensteinGetAndSetNAcq(indirect mem, iRegN newval, iRegPNoSp tmp1, i
   ins_pipe(pipe_serial);
 %}
 
-// This pattern is generated automatically from frankenstein_aarch64.m4.
+// This pattern is generated automatically from agnostic_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct frankensteinLoadP(iRegPNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
+instruct agnosticLoadP(iRegPNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
 %{
   // This instruction does not need an acquiring counterpart because it is only
-  // used for reference loading (Reference::get()). The same holds for frankensteinLoadN.
-  predicate(UseFrankensteinBarrier && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
+  // used for reference loading (Reference::get()). The same holds for agnosticLoadN.
+  predicate(UseAgnosticBarriers && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
   match(Set dst (LoadP mem));
   effect(TEMP dst, TEMP tmp1, TEMP tmp2, KILL cr);
   ins_cost(4 * INSN_COST);
@@ -578,11 +579,11 @@ instruct frankensteinLoadP(iRegPNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoS
   ins_pipe(iload_reg_mem);
 %}
 
-// This pattern is generated automatically from frankenstein_aarch64.m4.
+// This pattern is generated automatically from agnostic_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct frankensteinLoadN(iRegNNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+instruct agnosticLoadN(iRegNNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseFrankensteinBarrier && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
+  predicate(UseAgnosticBarriers && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
   match(Set dst (LoadN mem));
   effect(TEMP dst, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(4 * INSN_COST);

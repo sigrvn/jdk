@@ -29,12 +29,13 @@ define(`STOREP_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1StoreP$1(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Volatile,'needs_releasing_store(n)`,'!needs_releasing_store(n)`) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Volatile,'needs_releasing_store(n)`,'!needs_releasing_store(n)`) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreP mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(ifelse($1,Volatile,VOLATILE_REF_COST,INSN_COST));
   format %{ "$2  $src, $mem\t# ptr" %}
   ins_encode %{
+    __ block_comment("g1StoreP$1");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -59,12 +60,13 @@ define(`STOREN_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1StoreN$1(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Volatile,'needs_releasing_store(n)`,'!needs_releasing_store(n)`) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Volatile,'needs_releasing_store(n)`,'!needs_releasing_store(n)`) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(ifelse($1,Volatile,VOLATILE_REF_COST,INSN_COST));
   format %{ "$2  $src, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("g1StoreN$1");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -96,13 +98,14 @@ define(`ENCODESTOREN_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1EncodePAndStoreN$1(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Volatile,'needs_releasing_store(n)`,'!needs_releasing_store(n)`) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Volatile,'needs_releasing_store(n)`,'!needs_releasing_store(n)`) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem (EncodeP src)));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(ifelse($1,Volatile,VOLATILE_REF_COST,INSN_COST));
   format %{ "encode_heap_oop $tmp1, $src\n\t"
             "$2  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("g1EncodePAndStoreN$1");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -132,12 +135,13 @@ define(`CAEP_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1CompareAndExchangeP$1(iRegPNoSp res, indirect mem, iRegP oldval, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndExchangeP mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
   ins_cost(ifelse($1,Acq,VOLATILE_REF_COST,2 * VOLATILE_REF_COST));
   format %{ "cmpxchg$2 $res = $mem, $oldval, $newval\t# ptr" %}
   ins_encode %{
+    __ block_comment("g1CompareAndExchangeP$1");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     // Pass $oldval to the pre-barrier (instead of loading from $mem), because
@@ -169,12 +173,13 @@ define(`CAEN_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1CompareAndExchangeN$1(iRegNNoSp res, indirect mem, iRegN oldval, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndExchangeN mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(ifelse($1,Acq,VOLATILE_REF_COST,2 * VOLATILE_REF_COST));
   format %{ "cmpxchg$2 $res = $mem, $oldval, $newval\t# narrow oop" %}
   ins_encode %{
+    __ block_comment("g1CompareAndExchangeN$1");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
@@ -204,7 +209,7 @@ define(`CASP_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1CompareAndSwapP$1(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP oldval, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndSwapP mem (Binary oldval newval)));
   match(Set res (WeakCompareAndSwapP mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
@@ -241,7 +246,7 @@ define(`CASN_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1CompareAndSwapN$1(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegN oldval, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
   match(Set res (CompareAndSwapN mem (Binary oldval newval)));
   match(Set res (WeakCompareAndSwapN mem (Binary oldval newval)));
   effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
@@ -279,7 +284,7 @@ define(`XCHGP_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1GetAndSetP$1(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp preval, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
   match(Set preval (GetAndSetP mem newval));
   effect(TEMP preval, TEMP tmp1, TEMP tmp2, KILL cr);
   ins_cost(ifelse($1,Acq,VOLATILE_REF_COST,2 * VOLATILE_REF_COST));
@@ -310,7 +315,7 @@ define(`XCHGN_INSN',
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1GetAndSetN$1(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegNNoSp preval, rFlagsReg cr)
 %{
-  predicate(UseG1GC && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && ifelse($1,Acq,'needs_acquiring_load_exclusive(n)`,'!needs_acquiring_load_exclusive(n)`) && n->as_LoadStore()->barrier_data() != 0);
   match(Set preval (GetAndSetN mem newval));
   effect(TEMP preval, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(ifelse($1,Acq,VOLATILE_REF_COST,2 * VOLATILE_REF_COST));
@@ -342,12 +347,13 @@ instruct g1LoadP(iRegPNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, rF
 %{
   // This instruction does not need an acquiring counterpart because it is only
   // used for reference loading (Reference::get()). The same holds for g1LoadN.
-  predicate(UseG1GC && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
   match(Set dst (LoadP mem));
   effect(TEMP dst, TEMP tmp1, TEMP tmp2, KILL cr);
   ins_cost(4 * INSN_COST);
   format %{ "ldr  $dst, $mem\t# ptr" %}
   ins_encode %{
+    __ block_comment("g1LoadP");
     __ ldr($dst$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
                       noreg /* obj */,
@@ -362,12 +368,13 @@ instruct g1LoadP(iRegPNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, rF
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1LoadN(iRegNNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
   match(Set dst (LoadN mem));
   effect(TEMP dst, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(4 * INSN_COST);
   format %{ "ldrw  $dst, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("g1LoadN");
     __ ldrw($dst$$Register, $mem$$Register);
     if ((barrier_data() & G1C2BarrierPre) != 0) {
       __ decode_heap_oop($tmp1$$Register, $dst$$Register);

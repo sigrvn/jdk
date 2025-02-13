@@ -25,6 +25,7 @@
 #ifndef SHARE_OPTO_MACHNODE_HPP
 #define SHARE_OPTO_MACHNODE_HPP
 
+#include "gc/shared/barrierData.hpp"
 #include "opto/c2_MacroAssembler.hpp"
 #include "opto/callnode.hpp"
 #include "opto/constantTable.hpp"
@@ -233,8 +234,8 @@ public:
   // no constant base node input.
   virtual uint mach_constant_base_node_input() const { return (uint)-1; }
 
-  uint8_t barrier_data() const { return _barrier; }
-  void set_barrier_data(uint8_t data) { _barrier = data; }
+  BarrierData barrier_data() const { return _barrier; }
+  void set_barrier_data(BarrierData data) { _barrier = data; }
 
   // Copy index, inputs, and operands to a new version of the instruction.
   // Called from cisc_version() and short_branch_version().

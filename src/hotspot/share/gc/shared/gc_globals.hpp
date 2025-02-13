@@ -121,6 +121,9 @@
   product(bool, UseShenandoahGC, false,                                     \
           "Use the Shenandoah garbage collector")                           \
                                                                             \
+  product(bool, UseAgnosticBarriers, false, EXPERIMENTAL,                   \
+          "Use experimental GC-agnostic barriers")                          \
+                                                                            \
   /* notice: the max range value here is INT_MAX not UINT_MAX  */           \
   /* to protect from overflows                                 */           \
   product(uint, ParallelGCThreads, 0,                                       \

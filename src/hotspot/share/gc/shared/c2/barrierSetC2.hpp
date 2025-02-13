@@ -25,6 +25,7 @@
 #ifndef SHARE_GC_SHARED_C2_BARRIERSETC2_HPP
 #define SHARE_GC_SHARED_C2_BARRIERSETC2_HPP
 
+#include "gc/shared/barrierData.hpp"
 #include "memory/allocation.hpp"
 #include "oops/accessDecorators.hpp"
 #include "opto/loopnode.hpp"
@@ -106,7 +107,7 @@ protected:
   C2AccessValuePtr& _addr;
   Node*             _raw_access;
   BasicType         _type;
-  uint8_t           _barrier_data;
+  BarrierData       _barrier_data;
 
   void fixup_decorators();
 
@@ -129,8 +130,8 @@ public:
   bool is_raw() const             { return (_decorators & AS_RAW) != 0; }
   Node* raw_access() const        { return _raw_access; }
 
-  uint8_t barrier_data() const        { return _barrier_data; }
-  void set_barrier_data(uint8_t data) { _barrier_data = data; }
+  BarrierData barrier_data() const        { return _barrier_data; }
+  void set_barrier_data(BarrierData data) { _barrier_data = data; }
 
   void set_raw_access(Node* raw_access) { _raw_access = raw_access; }
   virtual void set_memory() {} // no-op for normal accesses, but not for atomic accesses.
@@ -255,7 +256,7 @@ public:
   // Return point from the stub (typically end of barrier).
   Label* continuation();
   // High-level, GC-specific barrier flags.
-  uint8_t barrier_data() const;
+  BarrierData barrier_data() const;
 
   // Preserve the value in reg across runtime calls in this barrier.
   void preserve(Register reg);
@@ -373,7 +374,7 @@ public:
 
 #ifndef PRODUCT
   virtual void dump_barrier_data(const MachNode* mach, outputStream* st) const {
-    st->print("%x", mach->barrier_data());
+    st->print("%hx", mach->barrier_data());
   };
 #endif
 };

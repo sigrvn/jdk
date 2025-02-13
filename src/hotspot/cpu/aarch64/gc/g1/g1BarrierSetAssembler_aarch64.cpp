@@ -138,6 +138,7 @@ static void generate_queue_test_and_insertion(MacroAssembler* masm, ByteSize ind
 static void generate_pre_barrier_fast_path(MacroAssembler* masm,
                                            const Register thread,
                                            const Register tmp1) {
+  __ block_comment("! generate_pre_barrier_fast_path START");
   Address in_progress(thread, in_bytes(G1ThreadLocalData::satb_mark_queue_active_offset()));
   // Is marking active?
   if (in_bytes(SATBMarkQueue::byte_width_of_active()) == 4) {
@@ -146,6 +147,7 @@ static void generate_pre_barrier_fast_path(MacroAssembler* masm,
     assert(in_bytes(SATBMarkQueue::byte_width_of_active()) == 1, "Assumption");
     __ ldrb(tmp1, in_progress);
   }
+  __ block_comment("! generate_pre_barrier_fast_path END");
 }
 
 static void generate_pre_barrier_slow_path(MacroAssembler* masm,
@@ -156,6 +158,7 @@ static void generate_pre_barrier_slow_path(MacroAssembler* masm,
                                            const Register tmp2,
                                            Label& done,
                                            Label& runtime) {
+  __ block_comment("! generate_pre_barrier_slow_path START");
   // Do we need to load the previous value?
   if (obj != noreg) {
     __ load_heap_oop(pre_val, Address(obj, 0), noreg, noreg, AS_RAW);
@@ -168,6 +171,7 @@ static void generate_pre_barrier_slow_path(MacroAssembler* masm,
                                     runtime,
                                     thread, pre_val, tmp1, tmp2);
   __ b(done);
+  __ block_comment("! generate_pre_barrier_slow_path END");
 }
 
 void G1BarrierSetAssembler::g1_write_barrier_pre(MacroAssembler* masm,
@@ -232,6 +236,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
                                             const Register tmp2,
                                             Label& done,
                                             bool new_val_maybe_null) {
+  __ block_comment("! generate_post_barrier_fast_path START");
   assert(thread == rthread, "must be");
   assert_different_registers(store_addr, new_val, thread, tmp1, tmp2, noreg);
 
@@ -259,6 +264,7 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
   }
   static_assert(G1CardTable::dirty_card_val() == 0, "must be to use zr");
   __ strb(zr, Address(tmp1));                            // *(card address) := dirty_card_val
+  __ block_comment("! generate_post_barrier_fast_path END");
 }
 
 void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
@@ -275,6 +281,7 @@ void G1BarrierSetAssembler::g1_write_barrier_post(MacroAssembler* masm,
 #if defined(COMPILER2)
 
 static void generate_c2_barrier_runtime_call(MacroAssembler* masm, G1BarrierStubC2* stub, const Register arg, const address runtime_path) {
+  __ block_comment("! generate_c2_barrier_runtime_call START");
   SaveLiveRegisters save_registers(masm, stub);
   if (c_rarg0 != arg) {
     __ mov(c_rarg0, arg);
@@ -282,6 +289,7 @@ static void generate_c2_barrier_runtime_call(MacroAssembler* masm, G1BarrierStub
   __ mov(c_rarg1, rthread);
   __ mov(rscratch1, runtime_path);
   __ blr(rscratch1);
+  __ block_comment("! generate_c2_barrier_runtime_call END");
 }
 
 void G1BarrierSetAssembler::g1_write_barrier_pre_c2(MacroAssembler* masm,

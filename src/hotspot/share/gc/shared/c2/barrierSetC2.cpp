@@ -109,7 +109,7 @@ Label* BarrierStubC2::continuation() {
   return &_continuation;
 }
 
-uint8_t BarrierStubC2::barrier_data() const {
+BarrierData BarrierStubC2::barrier_data() const {
   return _node->barrier_data();
 }
 

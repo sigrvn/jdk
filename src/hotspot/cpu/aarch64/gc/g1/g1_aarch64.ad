@@ -41,7 +41,7 @@ static void write_barrier_pre(MacroAssembler* masm,
                               Register tmp2,
                               RegSet preserve = RegSet(),
                               RegSet no_preserve = RegSet()) {
-  __ block_comment("=== write_barrier_pre START ===");
+  __ block_comment("! write_barrier_pre START");
   if (!G1PreBarrierStubC2::needs_barrier(node)) {
     return;
   }
@@ -55,7 +55,7 @@ static void write_barrier_pre(MacroAssembler* masm,
     stub->dont_preserve(*reg);
   }
   g1_asm->g1_write_barrier_pre_c2(masm, obj, pre_val, rthread, tmp1, tmp2, stub);
-  __ block_comment("=== write_barrier_pre END ===");
+  __ block_comment("! write_barrier_pre END"); 
 }
 
 static void write_barrier_post(MacroAssembler* masm,
@@ -64,7 +64,7 @@ static void write_barrier_post(MacroAssembler* masm,
                                Register new_val,
                                Register tmp1,
                                Register tmp2) {
-  __ block_comment("=== write_barrier_post START ===");
+  __ block_comment("! write_barrier_post START");
   if (!G1BarrierStubC2::needs_post_barrier(node)) {
     return;
   }
@@ -72,7 +72,7 @@ static void write_barrier_post(MacroAssembler* masm,
   G1BarrierSetAssembler* g1_asm = static_cast<G1BarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
   bool new_val_maybe_null = G1BarrierStubC2::post_new_val_maybe_null(node);
   g1_asm->g1_write_barrier_post_c2(masm, store_addr, new_val, rthread, tmp1, tmp2, new_val_maybe_null);
-  __ block_comment("=== write_barrier_post END ===");
+  __ block_comment("! write_barrier_post END");
 }
 
 %}
@@ -81,18 +81,17 @@ static void write_barrier_post(MacroAssembler* masm,
 
 // This section is generated from g1_aarch64.m4
 
-
 // This pattern is generated automatically from g1_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1StoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreP mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
   format %{ "str  $src, $mem\t# ptr" %}
   ins_encode %{
-    __ block_comment("g1StoreP");
+    __ block_comment("=== g1StoreP START ===");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -105,6 +104,7 @@ instruct g1StoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP
                        $src$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1StoreP END ===");
   %}
   ins_pipe(istore_reg_mem);
 %}
@@ -113,12 +113,13 @@ instruct g1StoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1StorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreP mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
   format %{ "stlr  $src, $mem\t# ptr" %}
   ins_encode %{
+    __ block_comment("=== g1StorePVolatile START ===");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -131,6 +132,7 @@ instruct g1StorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp
                        $src$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1StorePVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
 %}
@@ -139,12 +141,13 @@ instruct g1StorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1StoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
   format %{ "strw  $src, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("=== g1StoreN START ===");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -164,6 +167,7 @@ instruct g1StoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1StoreN END ===");
   %}
   ins_pipe(istore_reg_mem);
 %}
@@ -172,12 +176,13 @@ instruct g1StoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1StoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
   format %{ "stlrw  $src, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("=== g1StoreNVolatile START ===");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -197,6 +202,7 @@ instruct g1StoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1StoreNVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
 %}
@@ -212,7 +218,7 @@ instruct g1EncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp t
   format %{ "encode_heap_oop $tmp1, $src\n\t"
             "strw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
-    __ block_comment("g1EncodePAndStoreN");
+    __ block_comment("=== g1EncodePAndStoreN START ===");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -230,6 +236,7 @@ instruct g1EncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp t
                        $src$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1EncodePAndStoreN END ===");
   %}
   ins_pipe(istore_reg_mem);
 %}
@@ -238,13 +245,14 @@ instruct g1EncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp t
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1EncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(UseG1GC && !UseAgnosticBarriers && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem (EncodeP src)));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
   format %{ "encode_heap_oop $tmp1, $src\n\t"
             "stlrw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("=== g1EncodePAndStoreNVolatile START ===");
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
                       $tmp1$$Register /* pre_val */,
@@ -262,6 +270,7 @@ instruct g1EncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRe
                        $src$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1EncodePAndStoreNVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
 %}
@@ -276,6 +285,7 @@ instruct g1CompareAndExchangeP(iRegPNoSp res, indirect mem, iRegP oldval, iRegP 
   ins_cost(2 * VOLATILE_REF_COST);
   format %{ "cmpxchg $res = $mem, $oldval, $newval\t# ptr" %}
   ins_encode %{
+    __ block_comment("=== g1CompareAndExchangeP START ===");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     // Pass $oldval to the pre-barrier (instead of loading from $mem), because
@@ -295,6 +305,7 @@ instruct g1CompareAndExchangeP(iRegPNoSp res, indirect mem, iRegP oldval, iRegP 
                        $newval$$Register /* new_val */,
                        $tmp1$$Register /* tmp1 */,
                        $tmp2$$Register /* tmp2 */);
+    __ block_comment("=== g1CompareAndExchangeP END ===");
   %}
   ins_pipe(pipe_slow);
 %}
@@ -309,6 +320,7 @@ instruct g1CompareAndExchangePAcq(iRegPNoSp res, indirect mem, iRegP oldval, iRe
   ins_cost(VOLATILE_REF_COST);
   format %{ "cmpxchg_acq $res = $mem, $oldval, $newval\t# ptr" %}
   ins_encode %{
+    __ block_comment("=== g1CompareAndExchangePAcq START ===");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     // Pass $oldval to the pre-barrier (instead of loading from $mem), because
@@ -328,6 +340,7 @@ instruct g1CompareAndExchangePAcq(iRegPNoSp res, indirect mem, iRegP oldval, iRe
                        $newval$$Register /* new_val */,
                        $tmp1$$Register /* tmp1 */,
                        $tmp2$$Register /* tmp2 */);
+    __ block_comment("=== g1CompareAndExchangePAcq END ===");
   %}
   ins_pipe(pipe_slow);
 %}
@@ -342,6 +355,7 @@ instruct g1CompareAndExchangeN(iRegNNoSp res, indirect mem, iRegN oldval, iRegN 
   ins_cost(2 * VOLATILE_REF_COST);
   format %{ "cmpxchg $res = $mem, $oldval, $newval\t# narrow oop" %}
   ins_encode %{
+    __ block_comment("=== g1CompareAndExchangeN START ===");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
@@ -359,6 +373,7 @@ instruct g1CompareAndExchangeN(iRegNNoSp res, indirect mem, iRegN oldval, iRegN 
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1CompareAndExchangeN END ===");
   %}
   ins_pipe(pipe_slow);
 %}
@@ -373,6 +388,7 @@ instruct g1CompareAndExchangeNAcq(iRegNNoSp res, indirect mem, iRegN oldval, iRe
   ins_cost(VOLATILE_REF_COST);
   format %{ "cmpxchg_acq $res = $mem, $oldval, $newval\t# narrow oop" %}
   ins_encode %{
+    __ block_comment("=== g1CompareAndExchangeNAcq START ===");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
@@ -390,6 +406,7 @@ instruct g1CompareAndExchangeNAcq(iRegNNoSp res, indirect mem, iRegN oldval, iRe
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1CompareAndExchangeNAcq END ===");
   %}
   ins_pipe(pipe_slow);
 %}
@@ -406,6 +423,7 @@ instruct g1CompareAndSwapP(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp 
   format %{ "cmpxchg $mem, $oldval, $newval\t# (ptr)\n\t"
             "cset $res, EQ" %}
   ins_encode %{
+    __ block_comment("=== g1CompareAndSwapP START ===");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
@@ -423,6 +441,7 @@ instruct g1CompareAndSwapP(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp 
                        $newval$$Register /* new_val */,
                        $tmp1$$Register /* tmp1 */,
                        $tmp2$$Register /* tmp2 */);
+    __ block_comment("=== g1CompareAndSwapP END ===");
   %}
   ins_pipe(pipe_slow);
 %}
@@ -439,6 +458,7 @@ instruct g1CompareAndSwapPAcq(iRegINoSp res, indirect mem, iRegP newval, iRegPNo
   format %{ "cmpxchg_acq $mem, $oldval, $newval\t# (ptr)\n\t"
             "cset $res, EQ" %}
   ins_encode %{
+    __ block_comment("=== g1CompareAndSwapPAcq START ===");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
@@ -456,6 +476,7 @@ instruct g1CompareAndSwapPAcq(iRegINoSp res, indirect mem, iRegP newval, iRegPNo
                        $newval$$Register /* new_val */,
                        $tmp1$$Register /* tmp1 */,
                        $tmp2$$Register /* tmp2 */);
+    __ block_comment("=== g1CompareAndSwapPAcq END ===");
   %}
   ins_pipe(pipe_slow);
 %}
@@ -472,6 +493,7 @@ instruct g1CompareAndSwapN(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp 
   format %{ "cmpxchg $mem, $oldval, $newval\t# (narrow oop)\n\t"
             "cset $res, EQ" %}
   ins_encode %{
+    __ block_comment("=== g1CompareAndSwapN START ===");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
@@ -490,6 +512,7 @@ instruct g1CompareAndSwapN(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp 
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1CompareAndSwapN END ===");
   %}
   ins_pipe(pipe_slow);
 %}
@@ -506,6 +529,7 @@ instruct g1CompareAndSwapNAcq(iRegINoSp res, indirect mem, iRegN newval, iRegPNo
   format %{ "cmpxchg_acq $mem, $oldval, $newval\t# (narrow oop)\n\t"
             "cset $res, EQ" %}
   ins_encode %{
+    __ block_comment("=== g1CompareAndSwapNAcq START ===");
     assert_different_registers($oldval$$Register, $mem$$Register);
     assert_different_registers($newval$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
@@ -524,6 +548,7 @@ instruct g1CompareAndSwapNAcq(iRegINoSp res, indirect mem, iRegN newval, iRegPNo
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1CompareAndSwapNAcq END ===");
   %}
   ins_pipe(pipe_slow);
 %}
@@ -538,6 +563,7 @@ instruct g1GetAndSetP(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2
   ins_cost(2 * VOLATILE_REF_COST);
   format %{ "atomic_xchg  $preval, $newval, [$mem]" %}
   ins_encode %{
+    __ block_comment("=== g1GetAndSetP START ===");
     assert_different_registers($mem$$Register, $newval$$Register);
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
@@ -551,6 +577,7 @@ instruct g1GetAndSetP(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2
                        $newval$$Register /* new_val */,
                        $tmp1$$Register /* tmp1 */,
                        $tmp2$$Register /* tmp2 */);
+    __ block_comment("=== g1GetAndSetP END ===");
   %}
   ins_pipe(pipe_serial);
 %}
@@ -565,6 +592,7 @@ instruct g1GetAndSetPAcq(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp t
   ins_cost(VOLATILE_REF_COST);
   format %{ "atomic_xchg_acq  $preval, $newval, [$mem]" %}
   ins_encode %{
+    __ block_comment("=== g1GetAndSetPAcq START ===");
     assert_different_registers($mem$$Register, $newval$$Register);
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
@@ -578,6 +606,7 @@ instruct g1GetAndSetPAcq(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp t
                        $newval$$Register /* new_val */,
                        $tmp1$$Register /* tmp1 */,
                        $tmp2$$Register /* tmp2 */);
+    __ block_comment("=== g1GetAndSetPAcq END ===");
   %}
   ins_pipe(pipe_serial);
 %}
@@ -592,6 +621,7 @@ instruct g1GetAndSetN(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2
   ins_cost(2 * VOLATILE_REF_COST);
   format %{ "atomic_xchgw $preval, $newval, [$mem]" %}
   ins_encode %{
+    __ block_comment("=== g1GetAndSetN START ===");
     assert_different_registers($mem$$Register, $newval$$Register);
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
@@ -606,6 +636,7 @@ instruct g1GetAndSetN(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1GetAndSetN END ===");
   %}
   ins_pipe(pipe_serial);
 %}
@@ -620,6 +651,7 @@ instruct g1GetAndSetNAcq(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp t
   ins_cost(VOLATILE_REF_COST);
   format %{ "atomic_xchgw_acq $preval, $newval, [$mem]" %}
   ins_encode %{
+    __ block_comment("=== g1GetAndSetNAcq START ===");
     assert_different_registers($mem$$Register, $newval$$Register);
     write_barrier_pre(masm, this,
                       $mem$$Register /* obj */,
@@ -634,6 +666,7 @@ instruct g1GetAndSetNAcq(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp t
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1GetAndSetNAcq END ===");
   %}
   ins_pipe(pipe_serial);
 %}
@@ -650,12 +683,14 @@ instruct g1LoadP(iRegPNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, rF
   ins_cost(4 * INSN_COST);
   format %{ "ldr  $dst, $mem\t# ptr" %}
   ins_encode %{
+    __ block_comment("=== g1LoadP START ===");
     __ ldr($dst$$Register, $mem$$Register);
     write_barrier_pre(masm, this,
                       noreg /* obj */,
                       $dst$$Register /* pre_val */,
                       $tmp1$$Register /* tmp1 */,
                       $tmp2$$Register /* tmp2 */);
+    __ block_comment("=== g1LoadP END ===");
   %}
   ins_pipe(iload_reg_mem);
 %}
@@ -670,6 +705,7 @@ instruct g1LoadN(iRegNNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, iR
   ins_cost(4 * INSN_COST);
   format %{ "ldrw  $dst, $mem\t# compressed ptr" %}
   ins_encode %{
+    __ block_comment("=== g1LoadPN START ===");
     __ ldrw($dst$$Register, $mem$$Register);
     if ((barrier_data() & G1C2BarrierPre) != 0) {
       __ decode_heap_oop($tmp1$$Register, $dst$$Register);
@@ -678,6 +714,7 @@ instruct g1LoadN(iRegNNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, iR
                         $tmp1$$Register /* pre_val */,
                         $tmp2$$Register /* tmp1 */,
                         $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== g1LoadPN END ===");
     }
   %}
   ins_pipe(iload_reg_mem);

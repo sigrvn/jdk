@@ -173,6 +173,7 @@ void ZBarrierSetAssembler::store_barrier_fast(MacroAssembler* masm,
                                               bool is_atomic,
                                               Label& medium_path,
                                               Label& medium_path_continuation) const {
+  __ block_comment("! store_barrier_fast START");
   assert_different_registers(ref_addr.base(), rnew_zpointer, rtmp);
   assert_different_registers(ref_addr.index(), rnew_zpointer, rtmp);
   assert_different_registers(rnew_zaddress, rnew_zpointer, rtmp);
@@ -222,6 +223,7 @@ void ZBarrierSetAssembler::store_barrier_fast(MacroAssembler* masm,
     __ ldr(rtmp, Address(rthread, ZThreadLocalData::store_good_mask_offset()));
     __ orr(rnew_zpointer, rnew_zpointer, rtmp);
   }
+  __ block_comment("! store_barrier_fast END");
 }
 
 static void store_barrier_buffer_add(MacroAssembler* masm,
@@ -229,6 +231,7 @@ static void store_barrier_buffer_add(MacroAssembler* masm,
                                      Register tmp1,
                                      Register tmp2,
                                      Label& slow_path) {
+  __ block_comment("! store_barrier_buffer_add START");
   Address buffer(rthread, ZThreadLocalData::store_barrier_buffer_offset());
   assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2);
 
@@ -254,6 +257,7 @@ static void store_barrier_buffer_add(MacroAssembler* masm,
   // Load and log the prev value
   __ ldr(tmp1, tmp1);
   __ str(tmp1, Address(tmp2, in_bytes(ZStoreBarrierEntry::prev_offset())));
+  __ block_comment("! store_barrier_buffer_add END");
 }
 
 void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
@@ -266,6 +270,7 @@ void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
                                                 Label& medium_path_continuation,
                                                 Label& slow_path,
                                                 Label& slow_path_continuation) const {
+  __ block_comment("! store_barrier_medium START");
   assert_different_registers(ref_addr.base(), ref_addr.index(), rtmp1, rtmp2);
 
   // The reason to end up in the medium path is that the pre-value was not 'good'.
@@ -305,6 +310,7 @@ void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
     __ bind(slow_path_continuation);
     __ b(medium_path_continuation);
   }
+  __ block_comment("! store_barrier_medium END");
 }
 
 void ZBarrierSetAssembler::store_at(MacroAssembler* masm,
@@ -1181,6 +1187,7 @@ void ZBarrierSetAssembler::generate_c2_store_barrier_stub(MacroAssembler* masm, 
 
   __ bind(slow);
 
+  __ block_comment("! store_barrier_slow START");
   {
     SaveLiveRegisters save_live_registers(masm, stub);
     __ lea(c_rarg0, stub->ref_addr());
@@ -1196,6 +1203,7 @@ void ZBarrierSetAssembler::generate_c2_store_barrier_stub(MacroAssembler* masm, 
     }
     __ blr(rscratch1);
   }
+  __ block_comment("! store_barrier_slow END");
 
   // Stub exit
   __ b(slow_continuation);

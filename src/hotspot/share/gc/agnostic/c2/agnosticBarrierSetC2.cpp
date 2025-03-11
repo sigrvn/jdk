@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,74 +23,92 @@
  */
 
 #include "oops/accessDecorators.hpp"
-#include "precompiled.hpp"
-#include "classfile/javaClasses.hpp"
-#include "code/vmreg.inline.hpp"
+#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
-#include "gc/g1/g1BarrierSet.hpp"
-#include "gc/g1/g1BarrierSetAssembler.hpp"
-#include "gc/g1/g1BarrierSetRuntime.hpp"
-#include "gc/g1/g1CardTable.hpp"
-#include "gc/g1/g1ThreadLocalData.hpp"
-#include "gc/g1/g1HeapRegion.hpp"
-#include "opto/arraycopynode.hpp"
-#include "opto/block.hpp"
+#include "gc/z/zBarrierSet.hpp"
 #include "opto/compile.hpp"
 #include "opto/escape.hpp"
 #include "opto/graphKit.hpp"
-#include "opto/idealKit.hpp"
 #include "opto/machnode.hpp"
 #include "opto/macro.hpp"
-#include "opto/memnode.hpp"
 #include "opto/node.hpp"
 #include "opto/output.hpp"
 #include "opto/regalloc.hpp"
-#include "opto/rootnode.hpp"
-#include "opto/runtime.hpp"
-#include "opto/type.hpp"
 #include "utilities/growableArray.hpp"
-#include "utilities/macros.hpp"
 
-void AgnosticBarrierStubC2::emit_code(MacroAssembler& masm) {}
+static void z_set_barrier_data(C2Access& access) {
+  if (!ZBarrierSet::barrier_needed(access.decorators(), access.type())) {
+    return;
+  }
+
+  if (access.decorators() & C2_TIGHTLY_COUPLED_ALLOC) {
+    access.set_barrier_data(ZBarrierElided);
+    return;
+  }
+
+  BarrierData barrier_data = 0;
+  if (access.decorators() & ON_PHANTOM_OOP_REF) {
+    barrier_data |= ZBarrierPhantom;
+  } else if (access.decorators() & ON_WEAK_OOP_REF) {
+    barrier_data |= ZBarrierWeak;
+  } else {
+    barrier_data |= ZBarrierStrong;
+  }
+
+  if (access.decorators() & IN_NATIVE) {
+    barrier_data |= ZBarrierNative;
+  }
+
+  if (access.decorators() & AS_NO_KEEPALIVE) {
+    barrier_data |= ZBarrierNoKeepalive;
+  }
+
+  access.set_barrier_data(barrier_data);
+}
 
 Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) const {
+  z_set_barrier_data(access);
+  BarrierData barrier_data = access.barrier_data();
   DecoratorSet decorators = access.decorators();
+  bool is_dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
   bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
-  //bool is_dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
   bool in_heap = (decorators & IN_HEAP) != 0;
   bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
   bool need_store_barrier = !(tightly_coupled_alloc && use_ReduceInitialCardMarks()) && (in_heap || anonymous);
   bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
+
   if (access.is_oop() && need_store_barrier) {
-    access.set_barrier_data(get_store_barrier(access));
+    barrier_data |= get_store_barrier(access);
     if (tightly_coupled_alloc) {
       assert(!use_ReduceInitialCardMarks(),
              "post-barriers are only needed for tightly-coupled initialization stores when ReduceInitialCardMarks is disabled");
       // Pre-barriers are unnecessary for tightly-coupled initialization stores.
-      access.set_barrier_data(access.barrier_data() & ~G1C2BarrierPre);
+      barrier_data &= ~G1C2BarrierPre;
     }
   }
   if (no_keepalive) {
     // No keep-alive means no need for the pre-barrier.
-    access.set_barrier_data(access.barrier_data() & ~G1C2BarrierPre);
+    barrier_data &= ~G1C2BarrierPre;
   }
+
+  access.set_barrier_data(barrier_data);
   return BarrierSetC2::store_at_resolved(access, val);
 }
 
 class AgnosticBarrierSetC2State : public BarrierSetC2State {
 private:
-  GrowableArray<AgnosticBarrierStubC2*>* _stubs;
+  GrowableArray<BarrierStubC2*>* _stubs;
   int _trampoline_stubs_count;
   int _stubs_start_offset;
 
 public:
   AgnosticBarrierSetC2State(Arena* arena)
     : BarrierSetC2State(arena),
-      _stubs(new (arena) GrowableArray<AgnosticBarrierStubC2*>(arena, 8,  0, nullptr)),
+      _stubs(new (arena) GrowableArray<BarrierStubC2*>(arena, 8,  0, nullptr)),
       _trampoline_stubs_count(0),
       _stubs_start_offset(0) {}
 
-  GrowableArray<AgnosticBarrierStubC2*>* stubs() {
+  GrowableArray<BarrierStubC2*>* stubs() {
     return _stubs;
   }
 
@@ -137,7 +155,7 @@ void AgnosticBarrierSetC2::late_barrier_analysis() const {
 
 void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   MacroAssembler masm(&cb);
-  GrowableArray<AgnosticBarrierStubC2*>* const stubs = barrier_set_state()->stubs();
+  GrowableArray<BarrierStubC2*>* const stubs = barrier_set_state()->stubs();
   barrier_set_state()->set_stubs_start_offset(masm.offset());
 
   for (int i = 0; i < stubs->length(); i++) {
@@ -150,17 +168,3 @@ void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   }
   masm.flush();
 }
-
-#ifndef PRODUCT
-void AgnosticBarrierSetC2::dump_barrier_data(const MachNode* mach, outputStream* st) const {
-  if ((mach->barrier_data() & G1C2BarrierPre) != 0) {
-    st->print("G1 pre ");
-  }
-  if ((mach->barrier_data() & G1C2BarrierPost) != 0) {
-    st->print("G1 post ");
-  }
-  if ((mach->barrier_data() & G1C2BarrierPostNotNull) != 0) {
-    st->print("G1 notnull ");
-  }
-}
-#endif // !PRODUCT

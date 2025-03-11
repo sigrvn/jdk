@@ -23,7 +23,70 @@
 
 source_hpp %{
 
+#include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
 #include "gc/shared/gc_globals.hpp"
+
+%}
+
+source %{
+
+#include "gc/agnostic/agnosticBarrierSetAssembler_aarch64.hpp"
+
+static void agnostic_pre_write_barrier(MacroAssembler* masm,
+                                       const MachNode* node,
+                                       Address ref_addr,
+                                       Register a, // g1:obj,     z:rnew_zaddress
+                                       Register b, // g1:pre_val, z:rnew_zpointer
+                                       Register c, // g1:thread,
+                                       Register d, // g1:tmp1,    z:rtmp
+                                       Register e, // g1:tmp2
+                                       bool is_atomic,
+                                       RegSet preserve = RegSet(),
+                                       RegSet no_preserve = RegSet()) {
+  __ block_comment("=== agnostic_pre_write_barrier START ===");
+  Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
+  AgnosticBarrierSetAssembler* bsa = static_cast<AgnosticBarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
+
+  bool needs_g1_pre_barrier = G1BarrierStubC2::needs_pre_barrier(node);
+  bool is_native = (node->barrier_data() & ZBarrierNative) != 0;
+  bool is_nokeepalive = (node->barrier_data() & ZBarrierNoKeepalive) != 0;
+  
+  G1PreBarrierStubC2* const g1_stub = G1PreBarrierStubC2::create(node);
+  for (RegSetIterator<Register> reg = preserve.begin(); *reg != noreg; ++reg) {
+    g1_stub->preserve(*reg);
+  }
+  for (RegSetIterator<Register> reg = no_preserve.begin(); *reg != noreg; ++reg) {
+    g1_stub->dont_preserve(*reg);
+  }
+
+  ZStoreBarrierStubC2Aarch64* const z_stub = ZStoreBarrierStubC2Aarch64::create(node, 
+                                                                                ref_addr,
+                                                                                a, /* rnew_zaddress */
+                                                                                b, /* rnew_zpointer */
+                                                                                is_native, 
+                                                                                is_atomic, 
+                                                                                is_nokeepalive);
+
+  bsa->pre_write_barrier(masm, ref_addr, a, b, c, d, e, g1_stub, z_stub);
+  __ block_comment("=== agnostic_pre_write_barrier END ===");
+}
+
+static void agnostic_post_write_barrier(MacroAssembler* masm,
+                                        const MachNode* node,
+                                        Register store_addr,
+                                        Register new_val,
+                                        Register tmp1,
+                                        Register tmp2) {
+  __ block_comment("=== agnostic_post_write_barrier START ===");
+  Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
+  AgnosticBarrierSetAssembler* bsa = static_cast<AgnosticBarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
+
+  bool needs_g1_post_barrier = G1BarrierStubC2::needs_post_barrier(node);
+  bool new_val_maybe_null = G1BarrierStubC2::post_new_val_maybe_null(node);
+
+  bsa->post_write_barrier(masm, store_addr, new_val, rthread, tmp1, tmp2, new_val_maybe_null);
+  __ block_comment("=== agnostic_post_write_barrier END ===");
+}
 
 %}
 
@@ -32,22 +95,28 @@ instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2,
   predicate(UseAgnosticBarriers && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreP mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
+
   ins_cost(INSN_COST);
   format %{ "str  $src, $mem\t# ptr" %}
   ins_encode %{
-    __ block_comment("agnosticStoreP");
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
+    __ block_comment("=== agnosticStoreP START ===");
+    const Address ref_addr = Address($mem$$Register);
+    agnostic_pre_write_barrier(masm, this,
+                      ref_addr,
+                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
+                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
+                      rthread           /* g1:thread                    */,
+                      $tmp2$$Register   /* g1:tmp1,     z:rtmp          */,
+                      $tmp3$$Register   /* g1:tmp2                      */,
+                      false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ str($src$$Register, $mem$$Register);
-    write_barrier_post(masm, this,
+    agnostic_post_write_barrier(masm, this,
                        $mem$$Register /* store_addr */,
                        $src$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== agnosticStoreP END ===");
   %}
   ins_pipe(istore_reg_mem);
 %}
@@ -58,20 +127,27 @@ instruct agnosticStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNo
   match(Set mem (StoreP mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
+
   format %{ "stlr  $src, $mem\t# ptr" %}
   ins_encode %{
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
+    __ block_comment("=== agnosticStorePVolatile START ===");
+    const Address ref_addr = Address($mem$$Register);
+    agnostic_pre_write_barrier(masm, this,
+                      ref_addr,
+                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
+                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
+                      rthread           /* g1:thread */,
+                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
+                      $tmp3$$Register   /* g1:tmp2 */,
+                      false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ stlr($src$$Register, $mem$$Register);
-    write_barrier_post(masm, this,
+    agnostic_post_write_barrier(masm, this,
                        $mem$$Register /* store_addr */,
                        $src$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== agnosticStorePVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
 %}
@@ -84,11 +160,16 @@ instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2,
   ins_cost(INSN_COST);
   format %{ "strw  $src, $mem\t# compressed ptr" %}
   ins_encode %{
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
+    __ block_comment("=== agnosticStoreN START ===");
+    const Address ref_addr = Address($mem$$Register);
+    agnostic_pre_write_barrier(masm, this,
+                      ref_addr,
+                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
+                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
+                      rthread           /* g1:thread */,
+                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
+                      $tmp3$$Register   /* g1:tmp2 */,
+                      false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ strw($src$$Register, $mem$$Register);
     if ((barrier_data() & G1C2BarrierPost) != 0) {
@@ -98,11 +179,12 @@ instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2,
         __ decode_heap_oop_not_null($tmp1$$Register, $src$$Register);
       }
     }
-    write_barrier_post(masm, this,
+    agnostic_post_write_barrier(masm, this,
                        $mem$$Register /* store_addr */,
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== agnosticStoreN END ===");
   %}
   ins_pipe(istore_reg_mem);
 %}
@@ -115,11 +197,16 @@ instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNo
   ins_cost(VOLATILE_REF_COST);
   format %{ "stlrw  $src, $mem\t# compressed ptr" %}
   ins_encode %{
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
+    __ block_comment("=== agnosticStoreNVolatile START ===");
+    const Address ref_addr = Address($mem$$Register);
+    agnostic_pre_write_barrier(masm, this,
+                      ref_addr,
+                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
+                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
+                      rthread           /* g1:thread */,
+                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
+                      $tmp3$$Register   /* g1:tmp2 */,
+                      false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ stlrw($src$$Register, $mem$$Register);
     if ((barrier_data() & G1C2BarrierPost) != 0) {
@@ -129,11 +216,12 @@ instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNo
         __ decode_heap_oop_not_null($tmp1$$Register, $src$$Register);
       }
     }
-    write_barrier_post(masm, this,
+    agnostic_post_write_barrier(masm, this,
                        $mem$$Register /* store_addr */,
                        $tmp1$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== agnosticStoreNVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
 %}
@@ -147,12 +235,16 @@ instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegP
   format %{ "encode_heap_oop $tmp1, $src\n\t"
             "strw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
-    __ block_comment("agnosticEncodePAndStoreN");
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
+    __ block_comment("=== agnosticEncodePAndStoreN START ===");
+    const Address ref_addr = Address($mem$$Register);
+    agnostic_pre_write_barrier(masm, this,
+                      ref_addr,
+                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
+                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
+                      rthread           /* g1:thread */,
+                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
+                      $tmp3$$Register   /* g1:tmp2 */,
+                      false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     if ((barrier_data() & G1C2BarrierPostNotNull) == 0) {
       __ encode_heap_oop($tmp1$$Register, $src$$Register);
@@ -160,11 +252,12 @@ instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegP
       __ encode_heap_oop_not_null($tmp1$$Register, $src$$Register);
     }
     __ strw($tmp1$$Register, $mem$$Register);
-    write_barrier_post(masm, this,
+    agnostic_post_write_barrier(masm, this,
                        $mem$$Register /* store_addr */,
                        $src$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== agnosticEncodePAndStoreN END ===");
   %}
   ins_pipe(istore_reg_mem);
 %}
@@ -178,11 +271,16 @@ instruct agnosticEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp
   format %{ "encode_heap_oop $tmp1, $src\n\t"
             "stlrw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
+    __ block_comment("=== agnosticEncodePAndStoreNVolatile START ===");
+    const Address ref_addr = Address($mem$$Register);
+    agnostic_pre_write_barrier(masm, this,
+                      ref_addr,
+                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
+                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
+                      rthread           /* g1:thread */,
+                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
+                      $tmp3$$Register   /* g1:tmp2 */,
+                      false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     if ((barrier_data() & G1C2BarrierPostNotNull) == 0) {
       __ encode_heap_oop($tmp1$$Register, $src$$Register);
@@ -190,416 +288,12 @@ instruct agnosticEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp
       __ encode_heap_oop_not_null($tmp1$$Register, $src$$Register);
     }
     __ stlrw($tmp1$$Register, $mem$$Register);
-    write_barrier_post(masm, this,
+    agnostic_post_write_barrier(masm, this,
                        $mem$$Register /* store_addr */,
                        $src$$Register /* new_val */,
                        $tmp2$$Register /* tmp1 */,
                        $tmp3$$Register /* tmp2 */);
+    __ block_comment("=== agnosticEncodePAndStoreNVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
 %}
-
-instruct agnosticCompareAndExchangeP(iRegPNoSp res, indirect mem, iRegP oldval, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set res (CompareAndExchangeP mem (Binary oldval newval)));
-  effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
-  ins_cost(2 * VOLATILE_REF_COST);
-  format %{ "cmpxchg $res = $mem, $oldval, $newval\t# ptr" %}
-  ins_encode %{
-    assert_different_registers($oldval$$Register, $mem$$Register);
-    assert_different_registers($newval$$Register, $mem$$Register);
-    // Pass $oldval to the pre-barrier (instead of loading from $mem), because
-    // $oldval is the only value that can be overwritten.
-    // The same holds for agnosticCompareAndSwapP and its Acq variant.
-    write_barrier_pre(masm, this,
-                      noreg /* obj */,
-                      $oldval$$Register /* pre_val */,
-                      $tmp1$$Register /* tmp1 */,
-                      $tmp2$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $oldval$$Register, $newval$$Register) /* preserve */,
-                      RegSet::of($res$$Register) /* no_preserve */);
-    __ cmpxchg($mem$$Register, $oldval$$Register, $newval$$Register, Assembler::xword,
-               false /* acquire */, true /* release */, false /* weak */, $res$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $newval$$Register /* new_val */,
-                       $tmp1$$Register /* tmp1 */,
-                       $tmp2$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_slow);
-%}
-
-instruct agnosticCompareAndExchangePAcq(iRegPNoSp res, indirect mem, iRegP oldval, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set res (CompareAndExchangeP mem (Binary oldval newval)));
-  effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
-  ins_cost(VOLATILE_REF_COST);
-  format %{ "cmpxchg_acq $res = $mem, $oldval, $newval\t# ptr" %}
-  ins_encode %{
-    assert_different_registers($oldval$$Register, $mem$$Register);
-    assert_different_registers($newval$$Register, $mem$$Register);
-    // Pass $oldval to the pre-barrier (instead of loading from $mem), because
-    // $oldval is the only value that can be overwritten.
-    // The same holds for agnosticCompareAndSwapP and its Acq variant.
-    write_barrier_pre(masm, this,
-                      noreg /* obj */,
-                      $oldval$$Register /* pre_val */,
-                      $tmp1$$Register /* tmp1 */,
-                      $tmp2$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $oldval$$Register, $newval$$Register) /* preserve */,
-                      RegSet::of($res$$Register) /* no_preserve */);
-    __ cmpxchg($mem$$Register, $oldval$$Register, $newval$$Register, Assembler::xword,
-               true /* acquire */, true /* release */, false /* weak */, $res$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $newval$$Register /* new_val */,
-                       $tmp1$$Register /* tmp1 */,
-                       $tmp2$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_slow);
-%}
-
-instruct agnosticCompareAndExchangeN(iRegNNoSp res, indirect mem, iRegN oldval, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set res (CompareAndExchangeN mem (Binary oldval newval)));
-  effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
-  ins_cost(2 * VOLATILE_REF_COST);
-  format %{ "cmpxchg $res = $mem, $oldval, $newval\t# narrow oop" %}
-  ins_encode %{
-    assert_different_registers($oldval$$Register, $mem$$Register);
-    assert_different_registers($newval$$Register, $mem$$Register);
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $oldval$$Register, $newval$$Register) /* preserve */,
-                      RegSet::of($res$$Register) /* no_preserve */);
-    __ cmpxchg($mem$$Register, $oldval$$Register, $newval$$Register, Assembler::word,
-               false /* acquire */, true /* release */, false /* weak */, $res$$Register);
-    __ decode_heap_oop($tmp1$$Register, $newval$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $tmp1$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_slow);
-%}
-
-instruct agnosticCompareAndExchangeNAcq(iRegNNoSp res, indirect mem, iRegN oldval, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set res (CompareAndExchangeN mem (Binary oldval newval)));
-  effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
-  ins_cost(VOLATILE_REF_COST);
-  format %{ "cmpxchg_acq $res = $mem, $oldval, $newval\t# narrow oop" %}
-  ins_encode %{
-    assert_different_registers($oldval$$Register, $mem$$Register);
-    assert_different_registers($newval$$Register, $mem$$Register);
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $oldval$$Register, $newval$$Register) /* preserve */,
-                      RegSet::of($res$$Register) /* no_preserve */);
-    __ cmpxchg($mem$$Register, $oldval$$Register, $newval$$Register, Assembler::word,
-               true /* acquire */, true /* release */, false /* weak */, $res$$Register);
-    __ decode_heap_oop($tmp1$$Register, $newval$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $tmp1$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_slow);
-%}
-
-instruct agnosticCompareAndSwapP(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP oldval, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set res (CompareAndSwapP mem (Binary oldval newval)));
-  match(Set res (WeakCompareAndSwapP mem (Binary oldval newval)));
-  effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
-  ins_cost(2 * VOLATILE_REF_COST);
-  format %{ "cmpxchg $mem, $oldval, $newval\t# (ptr)\n\t"
-            "cset $res, EQ" %}
-  ins_encode %{
-    assert_different_registers($oldval$$Register, $mem$$Register);
-    assert_different_registers($newval$$Register, $mem$$Register);
-    write_barrier_pre(masm, this,
-                      noreg /* obj */,
-                      $oldval$$Register /* pre_val */,
-                      $tmp1$$Register /* tmp1 */,
-                      $tmp2$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $oldval$$Register, $newval$$Register) /* preserve */,
-                      RegSet::of($res$$Register) /* no_preserve */);
-    __ cmpxchg($mem$$Register, $oldval$$Register, $newval$$Register, Assembler::xword,
-               false /* acquire */, true /* release */, false /* weak */, noreg);
-    __ cset($res$$Register, Assembler::EQ);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $newval$$Register /* new_val */,
-                       $tmp1$$Register /* tmp1 */,
-                       $tmp2$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_slow);
-%}
-
-instruct agnosticCompareAndSwapPAcq(iRegINoSp res, indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP oldval, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set res (CompareAndSwapP mem (Binary oldval newval)));
-  match(Set res (WeakCompareAndSwapP mem (Binary oldval newval)));
-  effect(TEMP res, TEMP tmp1, TEMP tmp2, KILL cr);
-  ins_cost(VOLATILE_REF_COST);
-  format %{ "cmpxchg_acq $mem, $oldval, $newval\t# (ptr)\n\t"
-            "cset $res, EQ" %}
-  ins_encode %{
-    assert_different_registers($oldval$$Register, $mem$$Register);
-    assert_different_registers($newval$$Register, $mem$$Register);
-    write_barrier_pre(masm, this,
-                      noreg /* obj */,
-                      $oldval$$Register /* pre_val */,
-                      $tmp1$$Register /* tmp1 */,
-                      $tmp2$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $oldval$$Register, $newval$$Register) /* preserve */,
-                      RegSet::of($res$$Register) /* no_preserve */);
-    __ cmpxchg($mem$$Register, $oldval$$Register, $newval$$Register, Assembler::xword,
-               true /* acquire */, true /* release */, false /* weak */, noreg);
-    __ cset($res$$Register, Assembler::EQ);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $newval$$Register /* new_val */,
-                       $tmp1$$Register /* tmp1 */,
-                       $tmp2$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_slow);
-%}
-
-instruct agnosticCompareAndSwapN(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegN oldval, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set res (CompareAndSwapN mem (Binary oldval newval)));
-  match(Set res (WeakCompareAndSwapN mem (Binary oldval newval)));
-  effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
-  ins_cost(2 * VOLATILE_REF_COST);
-  format %{ "cmpxchg $mem, $oldval, $newval\t# (narrow oop)\n\t"
-            "cset $res, EQ" %}
-  ins_encode %{
-    assert_different_registers($oldval$$Register, $mem$$Register);
-    assert_different_registers($newval$$Register, $mem$$Register);
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $oldval$$Register, $newval$$Register) /* preserve */,
-                      RegSet::of($res$$Register) /* no_preserve */);
-    __ cmpxchg($mem$$Register, $oldval$$Register, $newval$$Register, Assembler::word,
-               false /* acquire */, true /* release */, false /* weak */, noreg);
-    __ cset($res$$Register, Assembler::EQ);
-    __ decode_heap_oop($tmp1$$Register, $newval$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $tmp1$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_slow);
-%}
-
-// This pattern is generated automatically from agnostic_aarch64.m4.
-// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct agnosticCompareAndSwapNAcq(iRegINoSp res, indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegN oldval, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set res (CompareAndSwapN mem (Binary oldval newval)));
-  match(Set res (WeakCompareAndSwapN mem (Binary oldval newval)));
-  effect(TEMP res, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
-  ins_cost(VOLATILE_REF_COST);
-  format %{ "cmpxchg_acq $mem, $oldval, $newval\t# (narrow oop)\n\t"
-            "cset $res, EQ" %}
-  ins_encode %{
-    assert_different_registers($oldval$$Register, $mem$$Register);
-    assert_different_registers($newval$$Register, $mem$$Register);
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $oldval$$Register, $newval$$Register) /* preserve */,
-                      RegSet::of($res$$Register) /* no_preserve */);
-    __ cmpxchg($mem$$Register, $oldval$$Register, $newval$$Register, Assembler::word,
-               true /* acquire */, true /* release */, false /* weak */, noreg);
-    __ cset($res$$Register, Assembler::EQ);
-    __ decode_heap_oop($tmp1$$Register, $newval$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $tmp1$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_slow);
-%}
-
-// This pattern is generated automatically from agnostic_aarch64.m4.
-// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct agnosticGetAndSetP(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp preval, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set preval (GetAndSetP mem newval));
-  effect(TEMP preval, TEMP tmp1, TEMP tmp2, KILL cr);
-  ins_cost(2 * VOLATILE_REF_COST);
-  format %{ "atomic_xchg  $preval, $newval, [$mem]" %}
-  ins_encode %{
-    assert_different_registers($mem$$Register, $newval$$Register);
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $preval$$Register /* pre_val (as a temporary register) */,
-                      $tmp1$$Register /* tmp1 */,
-                      $tmp2$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $preval$$Register, $newval$$Register) /* preserve */);
-    __ atomic_xchg($preval$$Register, $newval$$Register, $mem$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $newval$$Register /* new_val */,
-                       $tmp1$$Register /* tmp1 */,
-                       $tmp2$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_serial);
-%}
-
-// This pattern is generated automatically from agnostic_aarch64.m4.
-// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct agnosticGetAndSetPAcq(indirect mem, iRegP newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp preval, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set preval (GetAndSetP mem newval));
-  effect(TEMP preval, TEMP tmp1, TEMP tmp2, KILL cr);
-  ins_cost(VOLATILE_REF_COST);
-  format %{ "atomic_xchg_acq  $preval, $newval, [$mem]" %}
-  ins_encode %{
-    assert_different_registers($mem$$Register, $newval$$Register);
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $preval$$Register /* pre_val (as a temporary register) */,
-                      $tmp1$$Register /* tmp1 */,
-                      $tmp2$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $preval$$Register, $newval$$Register) /* preserve */);
-    __ atomic_xchgal($preval$$Register, $newval$$Register, $mem$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $newval$$Register /* new_val */,
-                       $tmp1$$Register /* tmp1 */,
-                       $tmp2$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_serial);
-%}
-
-// This pattern is generated automatically from agnostic_aarch64.m4.
-// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct agnosticGetAndSetN(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegNNoSp preval, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && !needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set preval (GetAndSetN mem newval));
-  effect(TEMP preval, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
-  ins_cost(2 * VOLATILE_REF_COST);
-  format %{ "atomic_xchgw $preval, $newval, [$mem]" %}
-  ins_encode %{
-    assert_different_registers($mem$$Register, $newval$$Register);
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $preval$$Register, $newval$$Register) /* preserve */);
-    __ atomic_xchgw($preval$$Register, $newval$$Register, $mem$$Register);
-    __ decode_heap_oop($tmp1$$Register, $newval$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $tmp1$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_serial);
-%}
-
-// This pattern is generated automatically from agnostic_aarch64.m4.
-// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct agnosticGetAndSetNAcq(indirect mem, iRegN newval, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegNNoSp preval, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && needs_acquiring_load_exclusive(n) && n->as_LoadStore()->barrier_data() != 0);
-  match(Set preval (GetAndSetN mem newval));
-  effect(TEMP preval, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
-  ins_cost(VOLATILE_REF_COST);
-  format %{ "atomic_xchgw_acq $preval, $newval, [$mem]" %}
-  ins_encode %{
-    assert_different_registers($mem$$Register, $newval$$Register);
-    write_barrier_pre(masm, this,
-                      $mem$$Register /* obj */,
-                      $tmp1$$Register /* pre_val */,
-                      $tmp2$$Register /* tmp1 */,
-                      $tmp3$$Register /* tmp2 */,
-                      RegSet::of($mem$$Register, $preval$$Register, $newval$$Register) /* preserve */);
-    __ atomic_xchgalw($preval$$Register, $newval$$Register, $mem$$Register);
-    __ decode_heap_oop($tmp1$$Register, $newval$$Register);
-    write_barrier_post(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $tmp1$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
-  %}
-  ins_pipe(pipe_serial);
-%}
-
-// This pattern is generated automatically from agnostic_aarch64.m4.
-// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct agnosticLoadP(iRegPNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, rFlagsReg cr)
-%{
-  // This instruction does not need an acquiring counterpart because it is only
-  // used for reference loading (Reference::get()). The same holds for agnosticLoadN.
-  predicate(UseAgnosticBarriers && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
-  match(Set dst (LoadP mem));
-  effect(TEMP dst, TEMP tmp1, TEMP tmp2, KILL cr);
-  ins_cost(4 * INSN_COST);
-  format %{ "ldr  $dst, $mem\t# ptr" %}
-  ins_encode %{
-    __ ldr($dst$$Register, $mem$$Register);
-    write_barrier_pre(masm, this,
-                      noreg /* obj */,
-                      $dst$$Register /* pre_val */,
-                      $tmp1$$Register /* tmp1 */,
-                      $tmp2$$Register /* tmp2 */);
-  %}
-  ins_pipe(iload_reg_mem);
-%}
-
-// This pattern is generated automatically from agnostic_aarch64.m4.
-// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct agnosticLoadN(iRegNNoSp dst, indirect mem, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
-%{
-  predicate(UseAgnosticBarriers && !needs_acquiring_load(n) && n->as_Load()->barrier_data() != 0);
-  match(Set dst (LoadN mem));
-  effect(TEMP dst, TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
-  ins_cost(4 * INSN_COST);
-  format %{ "ldrw  $dst, $mem\t# compressed ptr" %}
-  ins_encode %{
-    __ ldrw($dst$$Register, $mem$$Register);
-    if ((barrier_data() & G1C2BarrierPre) != 0) {
-      __ decode_heap_oop($tmp1$$Register, $dst$$Register);
-      write_barrier_pre(masm, this,
-                        noreg /* obj */,
-                        $tmp1$$Register /* pre_val */,
-                        $tmp2$$Register /* tmp1 */,
-                        $tmp3$$Register /* tmp2 */);
-    }
-  %}
-  ins_pipe(iload_reg_mem);
-%}
-
-// END This section of the file is automatically generated. Do not edit --------------

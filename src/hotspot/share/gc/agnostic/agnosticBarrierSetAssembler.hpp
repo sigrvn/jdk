@@ -22,24 +22,11 @@
  *
  */
 
-#ifndef SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
-#define SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
+#ifndef SHARE_GC_AGNOSTIC_AGNOSTICBARRIERSETASSEMBLER_HPP
+#define SHARE_GC_AGNOSTIC_AGNOSTICBARRIERSETASSEMBLER_HPP
 
-#include "gc/g1/c2/g1BarrierSetC2.hpp"
+#include "utilities/macros.hpp"
 
-// AgnosticBarrierSetC2 is an experimental universal barrier for all supported GC barriers for C2.
-// This specialized barrier set is generated using the -XX:+UseAgnosticBarriers feature flag.
-class AgnosticBarrierSetC2 : public G1BarrierSetC2 {
-protected:
-  // Important properties to consider for stores:
-  // 1. Uninitialized oop or initialized oop (if initialized we should use SATB, if not we don’t)
-  // 2. In heap or not in heap (if in the heap we need to do remset maintenance, otherwise we don’t)
-  virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
+#include CPU_HEADER(gc/agnostic/agnosticBarrierSetAssembler)
 
-public:
-  virtual void* create_barrier_state(Arena* comp_arena) const;
-  virtual void emit_stubs(CodeBuffer& cb) const;
-  virtual void late_barrier_analysis() const;
-};
-
-#endif // SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
+#endif // SHARE_GC_AGNOSTIC_AGNOSTICBARRIERSETASSEMBLER_HPP

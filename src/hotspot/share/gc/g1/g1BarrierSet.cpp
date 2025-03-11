@@ -23,6 +23,7 @@
  */
 
 #include "precompiled.hpp"
+#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "gc/g1/g1BarrierSet.inline.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
 #include "gc/g1/g1CardTable.inline.hpp"
@@ -55,7 +56,7 @@ class G1BarrierSetC2;
 
 G1BarrierSet::G1BarrierSet(G1CardTable* card_table,
                            G1CardTable* refinement_table) :
-  CardTableBarrierSet(make_barrier_set_assembler<G1BarrierSetAssembler>(),
+  CardTableBarrierSet(UseAgnosticBarriers ? make_barrier_set_assembler<AgnosticBarrierSetAssembler>() : make_barrier_set_assembler<G1BarrierSetAssembler>(),
                       make_barrier_set_c1<G1BarrierSetC1>(),
                       UseAgnosticBarriers ? make_barrier_set_c2<AgnosticBarrierSetC2>() : make_barrier_set_c2<G1BarrierSetC2>(),
                       card_table,

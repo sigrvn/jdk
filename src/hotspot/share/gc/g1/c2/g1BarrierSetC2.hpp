@@ -66,18 +66,6 @@ public:
 
 class G1BarrierSetC2: public CardTableBarrierSetC2 {
 protected:
-  bool g1_can_remove_pre_barrier(GraphKit* kit,
-                                 PhaseValues* phase,
-                                 Node* adr,
-                                 BasicType bt,
-                                 uint adr_idx) const;
-
-  bool g1_can_remove_post_barrier(GraphKit* kit,
-                                  PhaseValues* phase, Node* store,
-                                  Node* adr) const;
-
-  int get_store_barrier(C2Access& access) const;
-
   virtual Node* load_at_resolved(C2Access& access, const Type* val_type) const;
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
   virtual Node* atomic_cmpxchg_val_at_resolved(C2AtomicParseAccess& access, Node* expected_val,
@@ -87,6 +75,16 @@ protected:
   virtual Node* atomic_xchg_at_resolved(C2AtomicParseAccess& access, Node* new_val, const Type* value_type) const;
 
 public:
+  static bool g1_can_remove_pre_barrier(GraphKit* kit,
+                                 PhaseValues* phase,
+                                 Node* adr,
+                                 BasicType bt,
+                                 uint adr_idx);
+  static bool g1_can_remove_post_barrier(GraphKit* kit,
+                                  PhaseValues* phase, Node* store,
+                                  Node* adr);
+  static int get_store_barrier(C2Access& access);
+
   virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
   virtual void eliminate_gc_barrier_data(Node* node) const;
   virtual bool expand_barriers(Compile* C, PhaseIterGVN& igvn) const;

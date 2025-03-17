@@ -30,24 +30,35 @@ source_hpp %{
 
 source %{
 
-#include "gc/agnostic/agnosticBarrierSetAssembler_aarch64.hpp"
+static void agnostic_store_barrier(MacroAssembler* masm,
+                                   const MachNode* node,
+                                   Address ref_addr,
+                                   Register src,
+                                   Register reg1,
+                                   Register reg2,
+                                   Register thread,
+                                   Register tmp1,
+                                   Register tmp2,
+                                   bool is_atomic,
+                                   RegSet preserve = RegSet(),
+                                   RegSet no_preserve = RegSet()) {
+#define new_val       src
+#define store_addr    reg1
+#define obj           reg1
+#define rnew_zaddress reg1
+#define pre_val       reg2
+#define rnew_zpointer reg2
 
-static void agnostic_pre_write_barrier(MacroAssembler* masm,
-                                       const MachNode* node,
-                                       Address ref_addr,
-                                       Register a, // g1:obj,     z:rnew_zaddress
-                                       Register b, // g1:pre_val, z:rnew_zpointer
-                                       Register c, // g1:thread,
-                                       Register d, // g1:tmp1,    z:rtmp
-                                       Register e, // g1:tmp2
-                                       bool is_atomic,
-                                       RegSet preserve = RegSet(),
-                                       RegSet no_preserve = RegSet()) {
-  __ block_comment("=== agnostic_pre_write_barrier START ===");
+  __ block_comment("=== agnostic_store_barrier START ===");
   Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
-  AgnosticBarrierSetAssembler* bsa = static_cast<AgnosticBarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
+
+  if (node->barrier_data() & ZBarrierElided) {
+    z_color(masm, node, rnew_zpointer, rnew_zaddress);
+  }
 
   bool needs_g1_pre_barrier = G1BarrierStubC2::needs_pre_barrier(node);
+  bool needs_g1_post_barrier = G1BarrierStubC2::needs_post_barrier(node);
+  bool new_val_maybe_null = G1BarrierStubC2::post_new_val_maybe_null(node);
   bool is_native = (node->barrier_data() & ZBarrierNative) != 0;
   bool is_nokeepalive = (node->barrier_data() & ZBarrierNoKeepalive) != 0;
   
@@ -58,34 +69,108 @@ static void agnostic_pre_write_barrier(MacroAssembler* masm,
   for (RegSetIterator<Register> reg = no_preserve.begin(); *reg != noreg; ++reg) {
     g1_stub->dont_preserve(*reg);
   }
-
   ZStoreBarrierStubC2Aarch64* const z_stub = ZStoreBarrierStubC2Aarch64::create(node, 
                                                                                 ref_addr,
-                                                                                a, /* rnew_zaddress */
-                                                                                b, /* rnew_zpointer */
+                                                                                rnew_zaddress,
+                                                                                rnew_zpointer,
                                                                                 is_native, 
                                                                                 is_atomic, 
                                                                                 is_nokeepalive);
 
-  bsa->pre_write_barrier(masm, ref_addr, a, b, c, d, e, g1_stub, z_stub);
-  __ block_comment("=== agnostic_pre_write_barrier END ===");
-}
+  // G1 pre-store
+  assert(thread == rthread, "must be");
+  assert_different_registers(obj, pre_val, tmp1, tmp2);
+  assert(pre_val != noreg && tmp1 != noreg && tmp2 != noreg, "expecting a register");
+  g1_stub->initialize_registers(obj, pre_val, thread, tmp1, tmp2);
 
-static void agnostic_post_write_barrier(MacroAssembler* masm,
-                                        const MachNode* node,
-                                        Register store_addr,
-                                        Register new_val,
-                                        Register tmp1,
-                                        Register tmp2) {
-  __ block_comment("=== agnostic_post_write_barrier START ===");
-  Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
-  AgnosticBarrierSetAssembler* bsa = static_cast<AgnosticBarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
+  // G1 post-store
+  assert_different_registers(store_addr, new_val, thread, tmp1, tmp2, noreg);
 
-  bool needs_g1_post_barrier = G1BarrierStubC2::needs_post_barrier(node);
-  bool new_val_maybe_null = G1BarrierStubC2::post_new_val_maybe_null(node);
+  // ZGC pre-store
+  assert_different_registers(ref_addr.base(), rnew_zpointer, tmp1);
+  assert_different_registers(ref_addr.index(), rnew_zpointer, tmp1);
 
-  bsa->post_write_barrier(masm, store_addr, new_val, rthread, tmp1, tmp2, new_val_maybe_null);
-  __ block_comment("=== agnostic_post_write_barrier END ===");
+  //    ldr rTmp1, patch=[thread + G1_SATB_MARK_QUEUE_ACTIVE_OFFSET]
+  //    cbnz rTmp1, g1_slow_path
+  //    ldr rTmp1, [z_ref_addr]
+  //    mov rTmp2, patch=<Z_STORE_BAD_MASK>
+  //    tst rTmp1, rTmp2            ; If the result of this bitwise AND is non-zero, Z=0
+  //    b.ne z_medium_path          ; Jump to z_medium_path if Z=0
+  //z_medium_path_continuation:
+  //    mov rTmp2, patch=<Z_STORE_GOOD_MASK>
+  //    orr rTmp2, rTmp2, rTmp1, lsl, Z_POINTER_LOAD_SHIFT
+  //g1_slow_path_continuation:
+
+  // TODO: The ThreadLocalData segment for the different GCs have different layouts and thus
+  // their members may overlap. This can cause a problem at runtime if we read garbage, for
+  // example when reading from the address of G1's SATB Mark Queue Active flag when running ZGC.
+  //
+  // One solution would be to dedicate distinct byte offsets within the GCThreadLocalData segment to
+  // the various member variables across the GCs. As Serial and Parallel don't utilize this segment,
+  // we would only need to do so for G1 and ZGC. Since the segment is 344 bytes long, we can assign
+  // the first n-bytes to be used by G1 and the remaining m-bytes to be used by ZGC.
+  //
+  // A more extendable solution would be to implement a GC-agnostic patching mechanism to allow for
+  // patching on-the-fly depending on which GC is being used. Currently, only ZGC has a capable
+  // patching mechanism, so we simply just patch the value of the address below to be 0 to avoid the
+  // jump to G1's slow path.
+  Address in_progress(thread, in_bytes(G1ThreadLocalData::satb_mark_queue_active_offset()));
+  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatActiveAddrBeforeLdr);
+  if (in_bytes(SATBMarkQueue::byte_width_of_active()) == 4) {
+    __ ldrw(tmp1, in_progress);
+  } else {
+    assert(in_bytes(SATBMarkQueue::byte_width_of_active()) == 1, "Assumption");
+    __ ldrb(tmp1, in_progress);
+  }
+  __ cbnzw(tmp1, *g1_stub->entry());
+
+  __ ldr(tmp1, ref_addr);
+  __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreBadBeforeMov);
+  __ movzw(rnew_zpointer, barrier_Relocation::unpatched);
+  __ tst(rnew_zaddress, rnew_zpointer);
+  __ br(Assembler::NE, *z_stub->entry());
+  __ bind(*z_stub->continuation());
+  __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
+  __ movzw(rnew_zpointer, barrier_Relocation::unpatched);
+  __ orr(rnew_zpointer, rnew_zpointer, rnew_zaddress, Assembler::LSL, ZPointerLoadShift);
+
+  __ bind(*g1_stub->continuation()); 
+
+  Label done;
+  // Does store cross heap regions?
+  __ eor(tmp1, store_addr, new_val);                     // tmp1 := store address ^ new value
+  __ lsr(tmp1, tmp1, G1HeapRegion::LogOfHRGrainBytes);   // tmp1 := ((store address ^ new value) >> LogOfHRGrainBytes)
+  __ cbz(tmp1, done);
+
+  // Crosses regions, storing null?
+  if (new_val_maybe_null) {
+    __ cbz(new_val, done);
+  }
+  // Storing region crossing non-null, is card young?
+
+  __ lsr(tmp1, store_addr, CardTable::card_shift());     // tmp1 := card address relative to card table base
+
+  Address card_table_addr(thread, in_bytes(G1ThreadLocalData::card_table_base_offset()));
+  __ ldr(tmp2, card_table_addr);                         // tmp2 := card table base address
+  __ add(tmp1, tmp1, tmp2);                              // tmp1 := card address
+  if (UseCondCardMark) {
+    __ ldrb(tmp2, Address(tmp1));                        // tmp2 := card
+    // Instead of loading clean_card_val and comparing, we exploit the fact that
+    // the LSB of non-clean cards is always 0, and the LSB of clean cards 1.
+    __ tbz(tmp2, 0, done);
+  }
+  static_assert(G1CardTable::dirty_card_val() == 0, "must be to use zr");
+  __ strb(zr, Address(tmp1));                            // *(card address) := dirty_card_val
+  __ bind(done);
+
+  __ block_comment("=== agnostic_store_barrier END ===");
+
+#undef new_val
+#undef store_addr
+#undef obj
+#undef rnew_zaddress
+#undef pre_val
+#undef rnew_zpointer
 }
 
 %}
@@ -101,8 +186,9 @@ instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2,
   ins_encode %{
     __ block_comment("=== agnosticStoreP START ===");
     const Address ref_addr = Address($mem$$Register);
-    agnostic_pre_write_barrier(masm, this,
+    agnostic_store_barrier(masm, this,
                       ref_addr,
+                      $src$$Register,
                       $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
                       $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
                       rthread           /* g1:thread                    */,
@@ -111,11 +197,6 @@ instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ str($src$$Register, $mem$$Register);
-    agnostic_post_write_barrier(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $src$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
     __ block_comment("=== agnosticStoreP END ===");
   %}
   ins_pipe(istore_reg_mem);
@@ -132,8 +213,9 @@ instruct agnosticStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNo
   ins_encode %{
     __ block_comment("=== agnosticStorePVolatile START ===");
     const Address ref_addr = Address($mem$$Register);
-    agnostic_pre_write_barrier(masm, this,
+    agnostic_store_barrier(masm, this,
                       ref_addr,
+                      $src$$Register,
                       $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
                       $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
                       rthread           /* g1:thread */,
@@ -142,11 +224,6 @@ instruct agnosticStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNo
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ stlr($src$$Register, $mem$$Register);
-    agnostic_post_write_barrier(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $src$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
     __ block_comment("=== agnosticStorePVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
@@ -162,8 +239,9 @@ instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2,
   ins_encode %{
     __ block_comment("=== agnosticStoreN START ===");
     const Address ref_addr = Address($mem$$Register);
-    agnostic_pre_write_barrier(masm, this,
+    agnostic_store_barrier(masm, this,
                       ref_addr,
+                      $src$$Register,
                       $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
                       $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
                       rthread           /* g1:thread */,
@@ -179,11 +257,6 @@ instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2,
         __ decode_heap_oop_not_null($tmp1$$Register, $src$$Register);
       }
     }
-    agnostic_post_write_barrier(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $tmp1$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
     __ block_comment("=== agnosticStoreN END ===");
   %}
   ins_pipe(istore_reg_mem);
@@ -199,8 +272,9 @@ instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNo
   ins_encode %{
     __ block_comment("=== agnosticStoreNVolatile START ===");
     const Address ref_addr = Address($mem$$Register);
-    agnostic_pre_write_barrier(masm, this,
+    agnostic_store_barrier(masm, this,
                       ref_addr,
+                      $src$$Register,
                       $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
                       $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
                       rthread           /* g1:thread */,
@@ -216,11 +290,6 @@ instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNo
         __ decode_heap_oop_not_null($tmp1$$Register, $src$$Register);
       }
     }
-    agnostic_post_write_barrier(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $tmp1$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
     __ block_comment("=== agnosticStoreNVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
@@ -237,8 +306,9 @@ instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegP
   ins_encode %{
     __ block_comment("=== agnosticEncodePAndStoreN START ===");
     const Address ref_addr = Address($mem$$Register);
-    agnostic_pre_write_barrier(masm, this,
+    agnostic_store_barrier(masm, this,
                       ref_addr,
+                      $src$$Register,
                       $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
                       $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
                       rthread           /* g1:thread */,
@@ -252,11 +322,6 @@ instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegP
       __ encode_heap_oop_not_null($tmp1$$Register, $src$$Register);
     }
     __ strw($tmp1$$Register, $mem$$Register);
-    agnostic_post_write_barrier(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $src$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
     __ block_comment("=== agnosticEncodePAndStoreN END ===");
   %}
   ins_pipe(istore_reg_mem);
@@ -273,8 +338,9 @@ instruct agnosticEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp
   ins_encode %{
     __ block_comment("=== agnosticEncodePAndStoreNVolatile START ===");
     const Address ref_addr = Address($mem$$Register);
-    agnostic_pre_write_barrier(masm, this,
+    agnostic_store_barrier(masm, this,
                       ref_addr,
+                      $src$$Register,
                       $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
                       $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
                       rthread           /* g1:thread */,
@@ -288,11 +354,6 @@ instruct agnosticEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp
       __ encode_heap_oop_not_null($tmp1$$Register, $src$$Register);
     }
     __ stlrw($tmp1$$Register, $mem$$Register);
-    agnostic_post_write_barrier(masm, this,
-                       $mem$$Register /* store_addr */,
-                       $src$$Register /* new_val */,
-                       $tmp2$$Register /* tmp1 */,
-                       $tmp3$$Register /* tmp2 */);
     __ block_comment("=== agnosticEncodePAndStoreNVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);

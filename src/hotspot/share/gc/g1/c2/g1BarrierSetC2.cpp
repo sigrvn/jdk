@@ -22,6 +22,7 @@
  *
  */
 
+#include "opto/c2_globals.hpp"
 #include "precompiled.hpp"
 #include "classfile/javaClasses.hpp"
 #include "code/vmreg.inline.hpp"
@@ -72,7 +73,7 @@ bool G1BarrierSetC2::g1_can_remove_pre_barrier(GraphKit* kit,
                                                PhaseValues* phase,
                                                Node* adr,
                                                BasicType bt,
-                                               uint adr_idx) const {
+                                               uint adr_idx) {
   intptr_t offset = 0;
   Node* base = AddPNode::Ideal_base_and_offset(adr, phase, offset);
   AllocateNode* alloc = AllocateNode::Ideal_allocation(base);
@@ -172,7 +173,7 @@ bool G1BarrierSetC2::g1_can_remove_pre_barrier(GraphKit* kit,
  */
 bool G1BarrierSetC2::g1_can_remove_post_barrier(GraphKit* kit,
                                                 PhaseValues* phase, Node* store_ctrl,
-                                                Node* adr) const {
+                                                Node* adr) {
   intptr_t      offset = 0;
   Node*         base   = AddPNode::Ideal_base_and_offset(adr, phase, offset);
   AllocateNode* alloc  = AllocateNode::Ideal_allocation(base);
@@ -467,7 +468,7 @@ void* G1BarrierSetC2::create_barrier_state(Arena* comp_arena) const {
   return new (comp_arena) G1BarrierSetC2State(comp_arena);
 }
 
-int G1BarrierSetC2::get_store_barrier(C2Access& access) const {
+int G1BarrierSetC2::get_store_barrier(C2Access& access) {
   if (!access.is_parse_access()) {
     // Only support for eliding barriers at parse time for now.
     return G1C2BarrierPre | G1C2BarrierPost;
@@ -487,7 +488,7 @@ int G1BarrierSetC2::get_store_barrier(C2Access& access) const {
   // The post-barrier can also be removed if null is written. This case is
   // handled by G1BarrierSetC2::expand_barriers, which runs at the end of C2's
   // platform-independent optimizations to exploit stronger type information.
-  bool can_remove_post_barrier = use_ReduceInitialCardMarks() &&
+  bool can_remove_post_barrier = ReduceInitialCardMarks &&
     ((access.base() == kit->just_allocated_object(ctl)) ||
      g1_can_remove_post_barrier(kit, &kit->gvn(), ctl, adr));
 

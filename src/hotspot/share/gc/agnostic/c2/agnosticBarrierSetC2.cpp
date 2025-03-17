@@ -23,9 +23,9 @@
  */
 
 #include "oops/accessDecorators.hpp"
-#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
 #include "gc/z/zBarrierSet.hpp"
+#include "opto/c2_globals.hpp"
 #include "opto/compile.hpp"
 #include "opto/escape.hpp"
 #include "opto/graphKit.hpp"
@@ -36,52 +36,42 @@
 #include "opto/regalloc.hpp"
 #include "utilities/growableArray.hpp"
 
-static void z_set_barrier_data(C2Access& access) {
-  if (!ZBarrierSet::barrier_needed(access.decorators(), access.type())) {
-    return;
-  }
-
-  if (access.decorators() & C2_TIGHTLY_COUPLED_ALLOC) {
-    access.set_barrier_data(ZBarrierElided);
-    return;
-  }
-
-  BarrierData barrier_data = 0;
-  if (access.decorators() & ON_PHANTOM_OOP_REF) {
-    barrier_data |= ZBarrierPhantom;
-  } else if (access.decorators() & ON_WEAK_OOP_REF) {
-    barrier_data |= ZBarrierWeak;
-  } else {
-    barrier_data |= ZBarrierStrong;
-  }
-
-  if (access.decorators() & IN_NATIVE) {
-    barrier_data |= ZBarrierNative;
-  }
-
-  if (access.decorators() & AS_NO_KEEPALIVE) {
-    barrier_data |= ZBarrierNoKeepalive;
-  }
-
-  access.set_barrier_data(barrier_data);
-}
-
 Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) const {
-  z_set_barrier_data(access);
-  BarrierData barrier_data = access.barrier_data();
   DecoratorSet decorators = access.decorators();
-  bool is_dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
   bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
   bool in_heap = (decorators & IN_HEAP) != 0;
   bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
-  bool need_store_barrier = !(tightly_coupled_alloc && use_ReduceInitialCardMarks()) && (in_heap || anonymous);
+  bool need_g1_store_barrier = !(tightly_coupled_alloc && ReduceInitialCardMarks) && (in_heap || anonymous);
   bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
+  BarrierData barrier_data = 0;
 
-  if (access.is_oop() && need_store_barrier) {
-    barrier_data |= get_store_barrier(access);
+  if (ZBarrierSet::barrier_needed(decorators, access.type())) {
     if (tightly_coupled_alloc) {
-      assert(!use_ReduceInitialCardMarks(),
-             "post-barriers are only needed for tightly-coupled initialization stores when ReduceInitialCardMarks is disabled");
+      barrier_data |= ZBarrierElided;
+    } else {
+      if (decorators & ON_PHANTOM_OOP_REF) {
+        barrier_data |= ZBarrierPhantom;
+      } else if (decorators & ON_WEAK_OOP_REF) {
+        barrier_data |= ZBarrierWeak;
+      } else {
+        barrier_data |= ZBarrierStrong;
+      }
+
+      if (decorators & IN_NATIVE) {
+        barrier_data |= ZBarrierNative;
+      }
+
+      if (no_keepalive) {
+        barrier_data |= ZBarrierNoKeepalive;
+      }
+    }
+  }
+
+  if (access.is_oop() && need_g1_store_barrier) {
+    barrier_data |= G1BarrierSetC2::get_store_barrier(access);
+    if (tightly_coupled_alloc) {
+      assert(!ReduceInitialCardMarks,
+          "post-barriers are only needed for tightly-coupled initialization stores when ReduceInitialCardMarks is disabled");
       // Pre-barriers are unnecessary for tightly-coupled initialization stores.
       barrier_data &= ~G1C2BarrierPre;
     }
@@ -96,49 +86,49 @@ Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& v
 }
 
 class AgnosticBarrierSetC2State : public BarrierSetC2State {
-private:
-  GrowableArray<BarrierStubC2*>* _stubs;
-  int _trampoline_stubs_count;
-  int _stubs_start_offset;
+  private:
+    GrowableArray<BarrierStubC2*>* _stubs;
+    int _trampoline_stubs_count;
+    int _stubs_start_offset;
 
-public:
-  AgnosticBarrierSetC2State(Arena* arena)
-    : BarrierSetC2State(arena),
+  public:
+    AgnosticBarrierSetC2State(Arena* arena)
+      : BarrierSetC2State(arena),
       _stubs(new (arena) GrowableArray<BarrierStubC2*>(arena, 8,  0, nullptr)),
       _trampoline_stubs_count(0),
       _stubs_start_offset(0) {}
 
-  GrowableArray<BarrierStubC2*>* stubs() {
-    return _stubs;
-  }
+    GrowableArray<BarrierStubC2*>* stubs() {
+      return _stubs;
+    }
 
-  bool needs_liveness_data(const MachNode* mach) const {
-    return G1BarrierStubC2::needs_pre_barrier(mach) ||
-            G1BarrierStubC2::needs_post_barrier(mach) ||
-            mach->barrier_data() != ZBarrierElided;
-  }
+    bool needs_liveness_data(const MachNode* mach) const {
+      return G1BarrierStubC2::needs_pre_barrier(mach) ||
+        G1BarrierStubC2::needs_post_barrier(mach) ||
+        mach->barrier_data() != ZBarrierElided;
+    }
 
-  bool needs_livein_data() const {
-    // TODO: ZGC needs live-in data but G1 does not
-    return true;
-  }
+    bool needs_livein_data() const {
+      // TODO: ZGC needs live-in data but G1 does not
+      return true;
+    }
 
-  void inc_trampoline_stubs_count() {
-    assert(_trampoline_stubs_count != INT_MAX, "Overflow");
-    ++_trampoline_stubs_count;
-  }
+    void inc_trampoline_stubs_count() {
+      assert(_trampoline_stubs_count != INT_MAX, "Overflow");
+      ++_trampoline_stubs_count;
+    }
 
-  int trampoline_stubs_count() {
-    return _trampoline_stubs_count;
-  }
+    int trampoline_stubs_count() {
+      return _trampoline_stubs_count;
+    }
 
-  void set_stubs_start_offset(int offset) {
-    _stubs_start_offset = offset;
-  }
+    void set_stubs_start_offset(int offset) {
+      _stubs_start_offset = offset;
+    }
 
-  int stubs_start_offset() {
-    return _stubs_start_offset;
-  }
+    int stubs_start_offset() {
+      return _stubs_start_offset;
+    }
 };
 
 static AgnosticBarrierSetC2State* barrier_set_state() {
@@ -147,10 +137,6 @@ static AgnosticBarrierSetC2State* barrier_set_state() {
 
 void* AgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
   return new (comp_arena) AgnosticBarrierSetC2State(comp_arena);
-}
-
-void AgnosticBarrierSetC2::late_barrier_analysis() const {
-  compute_liveness_at_stubs();
 }
 
 void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {

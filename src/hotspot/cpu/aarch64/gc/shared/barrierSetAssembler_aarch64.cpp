@@ -39,7 +39,6 @@
 #include "gc/shared/c2/barrierSetC2.hpp"
 #endif // COMPILER2
 
-
 #define __ masm->
 
 void BarrierSetAssembler::load_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type,

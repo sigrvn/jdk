@@ -26,10 +26,11 @@
 #define SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
 
 #include "gc/g1/c2/g1BarrierSetC2.hpp"
+#include "gc/z/c2/zBarrierSetC2.hpp"
 
 // AgnosticBarrierSetC2 is an experimental universal barrier for all supported GC barriers for C2.
 // This specialized barrier set is generated using the -XX:+UseAgnosticBarriers feature flag.
-class AgnosticBarrierSetC2 : public G1BarrierSetC2 {
+class AgnosticBarrierSetC2 : public ZBarrierSetC2 {
 protected:
   // Important properties to consider for stores:
   // 1. Uninitialized oop or initialized oop (if initialized we should use SATB, if not we don’t)
@@ -39,7 +40,6 @@ protected:
 public:
   virtual void* create_barrier_state(Arena* comp_arena) const;
   virtual void emit_stubs(CodeBuffer& cb) const;
-  virtual void late_barrier_analysis() const;
 };
 
 #endif // SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP

@@ -34,7 +34,7 @@
 #define __ masm->
 
 void CardTableBarrierSetAssembler::store_check(MacroAssembler* masm, Register obj, Address dst) {
-
+  __ block_comment("CardTableBarrierSetAssembler::store_check");
   BarrierSet* bs = BarrierSet::barrier_set();
   assert(bs->kind() == BarrierSet::CardTableBarrierSet, "Wrong barrier set kind");
 
@@ -79,6 +79,7 @@ void CardTableBarrierSetAssembler::gen_write_ref_array_post_barrier(MacroAssembl
 
 void CardTableBarrierSetAssembler::oop_store_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type,
                                                 Address dst, Register val, Register tmp1, Register tmp2, Register tmp3) {
+  __ block_comment("CardTableBarrierSetAssembler::oop_store_at");
   bool in_heap = (decorators & IN_HEAP) != 0;
   bool is_array = (decorators & IS_ARRAY) != 0;
   bool on_anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;

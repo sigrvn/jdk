@@ -846,7 +846,8 @@ void ZBarrierSetAssembler::try_resolve_jobject_in_native(MacroAssembler* masm,
 static uint16_t patch_barrier_relocation_value(int format) {
   switch (format) {
   case AgnosticBarrierRelocationFormatActiveAddrBeforeLdr:
-    return 0;
+    //return in_bytes(G1ThreadLocalData::satb_mark_queue_active_offset());
+    return 340;
 
   case ZBarrierRelocationFormatLoadGoodBeforeTbX:
     return (uint16_t)exact_log2(ZPointerRemapped);

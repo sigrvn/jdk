@@ -43,9 +43,9 @@ static void agnostic_store_barrier(MacroAssembler* masm,
                                    RegSet preserve = RegSet(),
                                    RegSet no_preserve = RegSet()) {
 #define new_val       src
+#define rnew_zaddress src
 #define store_addr    reg1
 #define obj           reg1
-#define rnew_zaddress reg1
 #define pre_val       reg2
 #define rnew_zpointer reg2
 
@@ -69,12 +69,12 @@ static void agnostic_store_barrier(MacroAssembler* masm,
   for (RegSetIterator<Register> reg = no_preserve.begin(); *reg != noreg; ++reg) {
     g1_stub->dont_preserve(*reg);
   }
-  ZStoreBarrierStubC2Aarch64* const z_stub = ZStoreBarrierStubC2Aarch64::create(node, 
+  ZStoreBarrierStubC2Aarch64* const z_stub = ZStoreBarrierStubC2Aarch64::create(node,
                                                                                 ref_addr,
                                                                                 rnew_zaddress,
                                                                                 rnew_zpointer,
-                                                                                is_native, 
-                                                                                is_atomic, 
+                                                                                is_native,
+                                                                                is_atomic,
                                                                                 is_nokeepalive);
 
   // G1 pre-store
@@ -166,14 +166,18 @@ static void agnostic_store_barrier(MacroAssembler* masm,
   __ block_comment("=== agnostic_store_barrier END ===");
 
 #undef new_val
+#undef rnew_zaddress
 #undef store_addr
 #undef obj
-#undef rnew_zaddress
 #undef pre_val
 #undef rnew_zpointer
 }
 
 %}
+
+// z_store_barrier(masm, node, ref_addr, rnew_zaddress,  rnew_zpointer,  tmp,       is_atomic)
+// z_store_barrier(masm, this, ref_addr, $src$$Register, $tmp$$Register, rscratch2, false)
+//                                       iRegP src       iRegPNoSp tmp
 
 instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
@@ -188,15 +192,16 @@ instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2,
     const Address ref_addr = Address($mem$$Register);
     agnostic_store_barrier(masm, this,
                       ref_addr,
-                      $src$$Register,
-                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
-                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
+                      $src$$Register    /* g1:new_val, z:rnew_zaddress  */,
+                      $mem$$Register    /* g1:obj                       */,
+                      $tmp1$$Register   /* g1:pre_val, z:rnew_zpointer  */,
                       rthread           /* g1:thread                    */,
-                      $tmp2$$Register   /* g1:tmp1,     z:rtmp          */,
+                      $tmp2$$Register   /* g1:tmp1,    z:rtmp           */,
                       $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ str($src$$Register, $mem$$Register);
+    // __ str($tmp1$$Register, ref_addr);
     __ block_comment("=== agnosticStoreP END ===");
   %}
   ins_pipe(istore_reg_mem);

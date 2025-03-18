@@ -112,10 +112,10 @@ static void agnostic_store_barrier(MacroAssembler* masm,
   //
   // A more extendable solution would be to implement a GC-agnostic patching mechanism to allow for
   // patching on-the-fly depending on which GC is being used. Currently, only ZGC has a capable
-  // patching mechanism, so we simply just patch the value of the address below to be 0 to avoid the
+  // patching mechanism, so we simply just patch the instruction to move the value of 0 to avoid the
   // jump to G1's slow path.
   Address in_progress(thread, in_bytes(G1ThreadLocalData::satb_mark_queue_active_offset()));
-  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatActiveAddrBeforeLdr);
+  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatAddrOffsetBeforeLdr);
   if (in_bytes(SATBMarkQueue::byte_width_of_active()) == 4) {
     __ ldrw(tmp1, in_progress);
   } else {
@@ -134,7 +134,7 @@ static void agnostic_store_barrier(MacroAssembler* masm,
   __ movzw(rnew_zpointer, barrier_Relocation::unpatched);
   __ orr(rnew_zpointer, rnew_zpointer, rnew_zaddress, Assembler::LSL, ZPointerLoadShift);
 
-  __ bind(*g1_stub->continuation()); 
+  __ bind(*g1_stub->continuation());
 
   Label done;
   // Does store cross heap regions?
@@ -200,8 +200,8 @@ instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2,
                       $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
-    __ str($src$$Register, $mem$$Register);
-    // __ str($tmp1$$Register, ref_addr);
+    // __ str($src$$Register, $mem$$Register);
+    __ str($tmp1$$Register, ref_addr);
     __ block_comment("=== agnosticStoreP END ===");
   %}
   ins_pipe(istore_reg_mem);

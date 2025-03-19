@@ -32,7 +32,6 @@ source %{
 
 static void agnostic_store_barrier(MacroAssembler* masm,
                                    const MachNode* node,
-                                   Address ref_addr,
                                    Register src,
                                    Register reg1,
                                    Register reg2,
@@ -51,6 +50,7 @@ static void agnostic_store_barrier(MacroAssembler* masm,
 
   __ block_comment("=== agnostic_store_barrier START ===");
   Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
+  const Address ref_addr = Address(reg1);
 
   if (node->barrier_data() & ZBarrierElided) {
     z_color(masm, node, rnew_zpointer, rnew_zaddress);
@@ -138,13 +138,13 @@ static void agnostic_store_barrier(MacroAssembler* masm,
 
   Label done;
   // Does store cross heap regions?
-  __ eor(tmp1, store_addr, new_val);                     // tmp1 := store address ^ new value
+  __ eor(tmp1, store_addr, obj);                         // tmp1 := store address ^ new value
   __ lsr(tmp1, tmp1, G1HeapRegion::LogOfHRGrainBytes);   // tmp1 := ((store address ^ new value) >> LogOfHRGrainBytes)
   __ cbz(tmp1, done);
 
   // Crosses regions, storing null?
   if (new_val_maybe_null) {
-    __ cbz(new_val, done);
+    __ cbz(obj, done);
   }
   // Storing region crossing non-null, is card young?
 
@@ -165,7 +165,6 @@ static void agnostic_store_barrier(MacroAssembler* masm,
 
   __ block_comment("=== agnostic_store_barrier END ===");
 
-#undef new_val
 #undef rnew_zaddress
 #undef store_addr
 #undef obj
@@ -189,19 +188,29 @@ instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2,
   format %{ "str  $src, $mem\t# ptr" %}
   ins_encode %{
     __ block_comment("=== agnosticStoreP START ===");
-    const Address ref_addr = Address($mem$$Register);
     agnostic_store_barrier(masm, this,
-                      ref_addr,
                       $src$$Register    /* g1:new_val, z:rnew_zaddress  */,
-                      $mem$$Register    /* g1:obj                       */,
+                      $mem$$Register    /* g1:obj,     z:ref_addr       */,
                       $tmp1$$Register   /* g1:pre_val, z:rnew_zpointer  */,
                       rthread           /* g1:thread                    */,
                       $tmp2$$Register   /* g1:tmp1,    z:rtmp           */,
                       $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
-    // __ str($src$$Register, $mem$$Register);
-    __ str($tmp1$$Register, ref_addr);
+
+    Label z_store, end;
+    __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatJumpToZStoreBeforeMov);
+    __ movzw($tmp3$$Register, 1);
+    __ cbz($tmp3$$Register, z_store);
+
+    __ str($src$$Register, $mem$$Register);  // Store pointer for G1
+    __ b(end);
+
+    __ bind(z_store);
+    __ str($tmp1$$Register, $mem$$Register); // Store pointer for ZGC
+
+    __ bind(end);
+
     __ block_comment("=== agnosticStoreP END ===");
   %}
   ins_pipe(istore_reg_mem);
@@ -219,13 +228,12 @@ instruct agnosticStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNo
     __ block_comment("=== agnosticStorePVolatile START ===");
     const Address ref_addr = Address($mem$$Register);
     agnostic_store_barrier(masm, this,
-                      ref_addr,
-                      $src$$Register,
-                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
-                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
-                      rthread           /* g1:thread */,
-                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
-                      $tmp3$$Register   /* g1:tmp2 */,
+                      $src$$Register    /* g1:new_val, z:rnew_zaddress  */,
+                      $mem$$Register    /* g1:obj,     z:ref_addr       */,
+                      $tmp1$$Register   /* g1:pre_val, z:rnew_zpointer  */,
+                      rthread           /* g1:thread                    */,
+                      $tmp2$$Register   /* g1:tmp1,    z:rtmp           */,
+                      $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ stlr($src$$Register, $mem$$Register);
@@ -243,15 +251,13 @@ instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2,
   format %{ "strw  $src, $mem\t# compressed ptr" %}
   ins_encode %{
     __ block_comment("=== agnosticStoreN START ===");
-    const Address ref_addr = Address($mem$$Register);
     agnostic_store_barrier(masm, this,
-                      ref_addr,
-                      $src$$Register,
-                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
-                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
-                      rthread           /* g1:thread */,
-                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
-                      $tmp3$$Register   /* g1:tmp2 */,
+                      $src$$Register    /* g1:new_val, z:rnew_zaddress  */,
+                      $mem$$Register    /* g1:obj,     z:ref_addr       */,
+                      $tmp1$$Register   /* g1:pre_val, z:rnew_zpointer  */,
+                      rthread           /* g1:thread                    */,
+                      $tmp2$$Register   /* g1:tmp1,    z:rtmp           */,
+                      $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ strw($src$$Register, $mem$$Register);
@@ -276,15 +282,13 @@ instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNo
   format %{ "stlrw  $src, $mem\t# compressed ptr" %}
   ins_encode %{
     __ block_comment("=== agnosticStoreNVolatile START ===");
-    const Address ref_addr = Address($mem$$Register);
     agnostic_store_barrier(masm, this,
-                      ref_addr,
-                      $src$$Register,
-                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
-                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
-                      rthread           /* g1:thread */,
-                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
-                      $tmp3$$Register   /* g1:tmp2 */,
+                      $src$$Register    /* g1:new_val, z:rnew_zaddress  */,
+                      $mem$$Register    /* g1:obj,     z:ref_addr       */,
+                      $tmp1$$Register   /* g1:pre_val, z:rnew_zpointer  */,
+                      rthread           /* g1:thread                    */,
+                      $tmp2$$Register   /* g1:tmp1,    z:rtmp           */,
+                      $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     __ stlrw($src$$Register, $mem$$Register);
@@ -310,15 +314,13 @@ instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegP
             "strw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
     __ block_comment("=== agnosticEncodePAndStoreN START ===");
-    const Address ref_addr = Address($mem$$Register);
     agnostic_store_barrier(masm, this,
-                      ref_addr,
-                      $src$$Register,
-                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
-                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
-                      rthread           /* g1:thread */,
-                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
-                      $tmp3$$Register   /* g1:tmp2 */,
+                      $src$$Register    /* g1:new_val, z:rnew_zaddress  */,
+                      $mem$$Register    /* g1:obj,     z:ref_addr       */,
+                      $tmp1$$Register   /* g1:pre_val, z:rnew_zpointer  */,
+                      rthread           /* g1:thread                    */,
+                      $tmp2$$Register   /* g1:tmp1,    z:rtmp           */,
+                      $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     if ((barrier_data() & G1C2BarrierPostNotNull) == 0) {
@@ -342,15 +344,13 @@ instruct agnosticEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp
             "stlrw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
     __ block_comment("=== agnosticEncodePAndStoreNVolatile START ===");
-    const Address ref_addr = Address($mem$$Register);
     agnostic_store_barrier(masm, this,
-                      ref_addr,
-                      $src$$Register,
-                      $mem$$Register    /* g1:obj,      z:rnew_zaddress */,
-                      $tmp1$$Register   /* g1:pre_val,  z:rnew_zpointer */,
-                      rthread           /* g1:thread */,
-                      $tmp2$$Register   /* g1:tmp1,     z:rtmp */,
-                      $tmp3$$Register   /* g1:tmp2 */,
+                      $src$$Register    /* g1:new_val, z:rnew_zaddress  */,
+                      $mem$$Register    /* g1:obj,     z:ref_addr       */,
+                      $tmp1$$Register   /* g1:pre_val, z:rnew_zpointer  */,
+                      rthread           /* g1:thread                    */,
+                      $tmp2$$Register   /* g1:tmp1,    z:rtmp           */,
+                      $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
     if ((barrier_data() & G1C2BarrierPostNotNull) == 0) {

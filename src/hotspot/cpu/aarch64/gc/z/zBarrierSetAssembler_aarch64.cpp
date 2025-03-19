@@ -846,7 +846,8 @@ void ZBarrierSetAssembler::try_resolve_jobject_in_native(MacroAssembler* masm,
 static uint16_t patch_barrier_relocation_value(int format) {
   switch (format) {
   case AgnosticBarrierRelocationFormatAddrOffsetBeforeLdr:
-    return (uint16_t)Thread::gc_data_offset();
+  case AgnosticBarrierRelocationFormatJumpToZStoreBeforeMov:
+    return (uint16_t)0;
 
   case ZBarrierRelocationFormatLoadGoodBeforeTbX:
     return (uint16_t)exact_log2(ZPointerRemapped);
@@ -886,6 +887,9 @@ void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
   switch (format) {
   case AgnosticBarrierRelocationFormatAddrOffsetBeforeLdr:
     change_instruction(*patch_addr, 0xd2800000u);
+    break;
+  case AgnosticBarrierRelocationFormatJumpToZStoreBeforeMov:
+    change_immediate(*patch_addr, value, 5, 20);
     break;
   case ZBarrierRelocationFormatLoadGoodBeforeTbX:
     change_immediate(*patch_addr, value, 19, 23);

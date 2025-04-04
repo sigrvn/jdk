@@ -22,6 +22,7 @@
  *
  */
 
+#include "gc/shared/c2/agnosticBarrierSetC2.hpp"
 #include "precompiled.hpp"
 #include "gc/g1/g1BarrierSet.inline.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
@@ -56,7 +57,7 @@ G1BarrierSet::G1BarrierSet(G1CardTable* card_table,
                            G1CardTable* refinement_table) :
   CardTableBarrierSet(make_barrier_set_assembler<G1BarrierSetAssembler>(),
                       make_barrier_set_c1<G1BarrierSetC1>(),
-                      make_barrier_set_c2<G1BarrierSetC2>(),
+                      make_barrier_set_c2</*G1BarrierSetC2*/AgnosticBarrierSetC2>(),
                       card_table,
                       BarrierSet::FakeRtti(BarrierSet::G1BarrierSet)),
   _satb_mark_queue_buffer_allocator("SATB Buffer Allocator", G1SATBBufferSize),

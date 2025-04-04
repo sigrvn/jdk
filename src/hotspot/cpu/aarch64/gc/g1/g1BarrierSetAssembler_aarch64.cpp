@@ -331,6 +331,11 @@ void G1BarrierSetAssembler::g1_write_barrier_post_c2(MacroAssembler* masm,
                                                      Register tmp2,
                                                      bool new_val_maybe_null) {
   Label done;
+  // __ block_comment("JAJA");
+  // __ mov(c_rarg0, store_addr);
+  // __ mov(c_rarg1, new_val);
+  // __ mov(rscratch1, CAST_FROM_FN_PTR(address, G1BarrierSetRuntime::lol));
+  // __ blr(rscratch1);
   generate_post_barrier_fast_path(masm, store_addr, new_val, thread, tmp1, tmp2, done, new_val_maybe_null);
   __ bind(done);
 }

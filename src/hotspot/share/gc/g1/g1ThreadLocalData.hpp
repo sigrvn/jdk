@@ -28,13 +28,14 @@
 #include "gc/g1/g1CardTable.hpp"
 #include "gc/g1/g1CollectedHeap.hpp"
 #include "gc/g1/g1RegionPinCache.hpp"
+#include "gc/shared/agnosticThreadLocalData.hpp"
 #include "gc/shared/gc_globals.hpp"
 #include "gc/shared/satbMarkQueue.hpp"
 #include "runtime/javaThread.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
-class G1ThreadLocalData {
+class G1ThreadLocalData : AgnosticThreadLocalData {
 private:
   SATBMarkQueue _satb_mark_queue;
   G1CardTable::CardValue* _byte_map_base;

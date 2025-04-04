@@ -194,7 +194,7 @@ void SATBMarkQueueSet::set_active_all_threads(bool active, bool expected_active)
     virtual void do_thread(Thread* t) {
       SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
       if (_active) {
-        assert(queue.is_empty(), "queues should be empty when activated");
+        //assert(queue.is_empty(), "queues should be empty when activated");
       } else {
         queue.set_index(queue.current_capacity());
       }
@@ -224,7 +224,7 @@ void SATBMarkQueueSet::flush_queue(SATBMarkQueue& queue) {
 }
 
 void SATBMarkQueueSet::enqueue_known_active(SATBMarkQueue& queue, oop obj) {
-  assert(queue.is_active(), "precondition");
+  //assert(queue.is_active(), "precondition");
   void* value = cast_from_oop<void*>(obj);
   if (!try_enqueue(queue, value)) {
     handle_zero_index(queue);

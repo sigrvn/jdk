@@ -1,0 +1,174 @@
+//
+// Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+// DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+//
+// This code is free software; you can redistribute it and/or modify it
+// under the terms of the GNU General Public License version 2 only, as
+// published by the Free Software Foundation.
+//
+// This code is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+// version 2 for more details (a copy is included in the LICENSE file that
+// accompanied this code).
+//
+// You should have received a copy of the GNU General Public License version
+// 2 along with this work; if not, write to the Free Software Foundation,
+// Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+//
+// Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+// or visit www.oracle.com if you need additional information or have any
+// questions.
+//
+
+source_hpp %{
+
+#include "gc/g1/c2/g1BarrierSetC2.hpp"
+#include "gc/shared/gc_globals.hpp"
+#include "gc/shared/c2/agnosticBarrierSetC2.hpp"
+
+%}
+
+source %{
+
+#include "gc/shared/agnosticBarrierSetAssembler_aarch64.hpp"
+
+static void async_barrier(MacroAssembler* masm,
+                          const MachNode* node,
+                          Address obj,
+                          Register pre_val,
+                          Register new_val,
+                          Register tmp1,
+                          Register tmp2,
+                          RegSet preserve = RegSet(),
+                          RegSet no_preserve = RegSet()) {
+  if (!G1PreBarrierStubC2::needs_barrier(node)) {
+    return;
+  }
+  Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
+  AgnosticBarrierSetAssembler* agn_asm = static_cast<AgnosticBarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
+  AgnosticStoreBarrierStubC2* const stub = AgnosticStoreBarrierStubC2::create(node, obj, pre_val, tmp1, false, false, new_val);
+  for (RegSetIterator<Register> reg = preserve.begin(); *reg != noreg; ++reg) {
+    stub->preserve(*reg);
+  }
+  for (RegSetIterator<Register> reg = no_preserve.begin(); *reg != noreg; ++reg) {
+    stub->dont_preserve(*reg);
+  }
+  agn_asm->agnostic_store_barrier_c2(masm, obj, pre_val, new_val, rthread, tmp1, tmp2, stub);
+}
+
+%}
+
+// BEGIN This section of the file is automatically generated. Do not edit --------------
+
+// This section is generated from g1_aarch64.m4
+
+// This pattern is generated automatically from g1_aarch64.m4.
+// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
+
+// This pattern is generated automatically from g1_aarch64.m4.
+// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
+instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+%{
+  predicate(false && GCASB && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  match(Set mem (StoreN mem src));
+  effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
+  ins_cost(INSN_COST);
+  format %{ "strw  $src, $mem\t# compressed ptr" %}
+  ins_encode %{
+    __ strw($src$$Register, $mem$$Register);
+    if ((barrier_data() & G1C2BarrierPost) != 0) {
+      if ((barrier_data() & G1C2BarrierPostNotNull) == 0) {
+        __ decode_heap_oop($tmp1$$Register, $src$$Register);
+      } else {
+        __ decode_heap_oop_not_null($tmp1$$Register, $src$$Register);
+      }
+    }
+  %}
+  ins_pipe(istore_reg_mem);
+%}
+
+// This pattern is generated automatically from g1_aarch64.m4.
+// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
+instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+%{
+  predicate(false && GCASB && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  match(Set mem (StoreN mem src));
+  effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
+  ins_cost(VOLATILE_REF_COST);
+  format %{ "stlrw  $src, $mem\t# compressed ptr" %}
+  ins_encode %{
+    const Address ref_addr = Address($mem$$Register);
+    async_barrier(masm, this,
+                  ref_addr /* obj */,
+                  $tmp1$$Register /* pre_val */,
+                  $src$$Register /* new_val */,
+                  $tmp2$$Register /* tmp1 */,
+                  $tmp3$$Register /* tmp2 */,
+                  RegSet::of($mem$$Register, $src$$Register) /* preserve */);
+    __ stlrw($src$$Register, $mem$$Register);
+  %}
+  ins_pipe(pipe_class_memory);
+%}
+
+// This pattern is generated automatically from g1_aarch64.m4.
+// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
+instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegPNoSp tmp4, rFlagsReg cr)
+%{
+  predicate(GCASB && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  match(Set mem (StoreN mem (EncodeP src)));
+  effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, TEMP tmp4, KILL cr);
+  ins_cost(INSN_COST);
+  format %{ "encode_heap_oop $tmp1, $src\n\t"
+            "strw  $tmp1, $mem\t# compressed ptr" %}
+  ins_encode %{
+    const Address ref_addr = Address($mem$$Register);
+    /*const Address n = Address($tmp4$$Register);*/
+    async_barrier(masm, this,
+                  ref_addr /* obj */,
+                  $tmp1$$Register /* pre_val */,
+                  $src$$Register /* new_val */,
+                  $tmp2$$Register /* tmp1 */,
+                  $tmp3$$Register /* tmp2 */,
+                  RegSet::of($mem$$Register, $src$$Register) /* preserve */);
+    if ((barrier_data() & G1C2BarrierPostNotNull) == 0) {
+      __ encode_heap_oop($tmp1$$Register, $src$$Register);
+    } else {
+      __ encode_heap_oop_not_null($tmp1$$Register, $src$$Register);
+    }
+    __ strw($tmp1$$Register, $mem$$Register);
+    
+  %}
+  ins_pipe(istore_reg_mem);
+%}
+
+// This pattern is generated automatically from g1_aarch64.m4.
+// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
+instruct agnosticEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+%{
+  predicate(false && GCASB && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  match(Set mem (StoreN mem (EncodeP src)));
+  effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
+  ins_cost(VOLATILE_REF_COST);
+  format %{ "encode_heap_oop $tmp1, $src\n\t"
+            "stlrw  $tmp1, $mem\t# compressed ptr" %}
+  ins_encode %{
+    const Address ref_addr = Address($mem$$Register);
+    async_barrier(masm, this,
+                  ref_addr /* obj */,
+                  $tmp1$$Register /* pre_val */,
+                  $src$$Register /* new_val */,
+                  $tmp2$$Register /* tmp1 */,
+                  $tmp3$$Register /* tmp2 */,
+                  RegSet::of($mem$$Register, $src$$Register) /* preserve */);
+    if ((barrier_data() & G1C2BarrierPostNotNull) == 0) {
+      __ encode_heap_oop($tmp1$$Register, $src$$Register);
+    } else {
+      __ encode_heap_oop_not_null($tmp1$$Register, $src$$Register);
+    }
+    __ stlrw($tmp1$$Register, $mem$$Register);
+  %}
+  ins_pipe(pipe_class_memory);
+%}
+
+// END This section of the file is automatically generated. Do not edit --------------

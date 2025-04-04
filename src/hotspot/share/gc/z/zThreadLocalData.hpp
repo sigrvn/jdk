@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -24,6 +24,7 @@
 #ifndef SHARE_GC_Z_ZTHREADLOCALDATA_HPP
 #define SHARE_GC_Z_ZTHREADLOCALDATA_HPP
 
+#include "gc/shared/agnosticThreadLocalData.hpp"
 #include "gc/z/zAddress.hpp"
 #include "gc/z/zGenerationId.hpp"
 #include "gc/z/zMarkStack.hpp"
@@ -32,7 +33,7 @@
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
-class ZThreadLocalData {
+class ZThreadLocalData : AgnosticThreadLocalData {
 private:
   uintptr_t              _load_good_mask;
   uintptr_t              _load_bad_mask;

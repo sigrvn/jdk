@@ -25,8 +25,12 @@
 #ifndef SHARE_GC_SHARED_GCVMOPERATIONS_HPP
 #define SHARE_GC_SHARED_GCVMOPERATIONS_HPP
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
+#include "gc/shared/agnosticStoreBarrierBuffer.hpp"
+#include "gc/shared/agnosticThreadLocalData.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/collectorCounters.hpp"
+#include "gc/shared/satbMarkQueue.hpp"
 #include "memory/metaspace.hpp"
 #include "prims/jvmtiExport.hpp"
 #include "runtime/handles.hpp"

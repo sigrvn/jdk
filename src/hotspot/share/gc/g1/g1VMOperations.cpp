@@ -102,6 +102,46 @@ void VM_G1TryInitiateConcMark::doit() {
     // we've rejected this request.
     _whitebox_attached = true;
   } else {
+    
+    class DoThings : public ThreadClosure {
+      SATBMarkQueueSet* _qset;
+      bool _active;
+    public:
+      DoThings(bool active) {}
+      virtual void do_thread(Thread* t) {
+        printf("art\n");
+        AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
+        CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
+        SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
+        _qset = &satb_mq_set;
+        SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
+  
+        while (buffer->is_empty() == false) {
+          AgnosticStoreBarrierEntry* entry = buffer->pop();
+          oopDesc* lol = entry->_prev;
+          oopDesc* ref_addr = entry->_p;
+          if (ref_addr == nullptr) continue;
+          
+          oopDesc* val = ref_addr->obj_field_acquire(0);
+          
+          if (lol != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, lol);
+          
+          if (val == nullptr) continue;
+          if (G1HeapRegion::is_in_same_region(ref_addr, val)) {
+            CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
+            printf("1arta %p\n", (void*)result);
+            printf("2arta %p\n", (void*)ref_addr);
+            printf("3arta %p\n", (void*)val);
+            *result = CardTable::dirty_card_val();
+          }
+        }
+      }
+    } closure(true);
+    if (Threads_lock->owner() == Thread::current()) {
+      //assert(false, "pita");
+      Threads::threads_do(&closure);
+    }
+
     _gc_succeeded = g1h->do_collection_pause_at_safepoint();
     assert(_gc_succeeded, "No reason to fail");
   }
@@ -118,6 +158,47 @@ void VM_G1CollectForAllocation::doit() {
 
   GCCauseSetter x(g1h, _gc_cause);
   // Try a partial collection of some kind.
+  
+  class DoThings : public ThreadClosure {
+    SATBMarkQueueSet* _qset;
+    bool _active;
+  public:
+    DoThings(bool active) {}
+    virtual void do_thread(Thread* t) {
+      printf("art\n");
+      AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
+      CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
+      SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
+      _qset = &satb_mq_set;
+      SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
+
+      while (buffer->is_empty() == false) {
+        AgnosticStoreBarrierEntry* entry = buffer->pop();
+        oopDesc* lol = entry->_prev;
+        oopDesc* ref_addr = entry->_p;
+        if (ref_addr == nullptr) continue;
+        
+        oopDesc* val = ref_addr->obj_field_acquire(0);
+        
+        if (lol != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, lol);
+        
+        if (val == nullptr) continue;
+        if (G1HeapRegion::is_in_same_region(ref_addr, val)) {
+          CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
+          printf("1arta %p\n", (void*)result);
+          printf("2arta %p\n", (void*)ref_addr);
+          printf("3arta %p\n", (void*)val);
+          *result = CardTable::dirty_card_val();
+        }
+      }
+    }
+  } closure(true);
+  if (Threads_lock->owner() == Thread::current()) {
+    //assert(false, "pita");
+    Threads::threads_do(&closure);
+  }
+
+
   _gc_succeeded = g1h->do_collection_pause_at_safepoint();
   assert(_gc_succeeded, "no reason to fail");
 

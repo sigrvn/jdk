@@ -43,6 +43,8 @@
 #include "gc/shared/c2/cardTableBarrierSetC2.hpp"
 #endif
 
+#include "gc/shared/cardTableThreadLocalData.hpp"
+
 class CardTableBarrierSetC1;
 class CardTableBarrierSetC2;
 
@@ -177,6 +179,21 @@ void CardTableBarrierSet::flush_deferred_card_mark_barrier(JavaThread* thread) {
   assert(!_defer_initial_card_mark, "Should be false");
   assert(thread->deferred_card_mark().is_empty(), "Should be empty");
 #endif
+}
+
+void CardTableBarrierSet::on_thread_create(Thread* thread) {
+  // Create thread local data
+  CardTableThreadLocalData::create(thread);
+}
+
+void CardTableBarrierSet::on_thread_destroy(Thread* thread) {
+  // Destroy thread local data
+  CardTableThreadLocalData::destroy(thread);
+}
+
+void CardTableBarrierSet::on_thread_attach(Thread* thread) {
+  BarrierSet::on_thread_attach(thread);
+  
 }
 
 void CardTableBarrierSet::on_thread_detach(Thread* thread) {

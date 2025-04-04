@@ -42,7 +42,6 @@ public:
   static bool post_new_val_maybe_null(const MachNode* node);
 
   G1BarrierStubC2(const MachNode* node);
-  virtual void emit_code(MacroAssembler& masm) = 0;
 };
 
 class G1PreBarrierStubC2 : public G1BarrierStubC2 {

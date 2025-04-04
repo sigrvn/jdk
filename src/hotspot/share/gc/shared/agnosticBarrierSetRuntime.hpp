@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,37 +19,30 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
- *
  */
 
-#ifndef SHARE_GC_G1_G1BARRIERSETRUNTIME_HPP
-#define SHARE_GC_G1_G1BARRIERSETRUNTIME_HPP
+#ifndef SHARE_GC_SHARED_AGNOSTICBARRIERSETRUNTIME_HPP
+#define SHARE_GC_SHARED_AGNOSTICBARRIERSETRUNTIME_HPP
 
-#include "gc/g1/g1CardTable.hpp"
+#include "gc/z/zAddress.hpp"
 #include "memory/allStatic.hpp"
+#include "oops/accessDecorators.hpp"
+#include "oops/oop.hpp"
 #include "oops/oopsHierarchy.hpp"
+#include "runtime/javaThread.hpp"
+#include "runtime/threads.hpp"
 #include "utilities/globalDefinitions.hpp"
-#include "utilities/macros.hpp"
 
-class oopDesc;
-class JavaThread;
-
-class G1BarrierSetRuntime: public AllStatic {
+class AgnosticBarrierSetRuntime : public AllStatic {
 private:
-  static void clone(oopDesc* src, oopDesc* dst, size_t size);
+  static void buffer_full(oopDesc* p, JavaThread* thread, oopDesc* n, oopDesc* carta);
+  static void g1_slow_path(oopDesc* oop, JavaThread* thread, oopDesc* n);
+  static void g1_slow_path_post(oopDesc* oop, JavaThread* thread);
+  static void ct_slow_path(oopDesc* oop, JavaThread* thread);
+  static void z_slow_path(oopDesc* oop, JavaThread* thread);
 public:
-  using CardValue = G1CardTable::CardValue;
-
-  // Arraycopy stub generator
-  static void write_ref_array_pre_oop_entry(oop* dst, size_t length);
-  static void write_ref_array_pre_narrow_oop_entry(narrowOop* dst, size_t length);
-  static void write_ref_array_post_entry(HeapWord* dst, size_t length);
-  static void lol();
-
-  // C2 slow-path runtime calls.
-  static void write_ref_field_pre_entry(oopDesc* orig, JavaThread *thread);
-
-  static address clone_addr();
+  static address buffer_full_addr();
+  static void do_magic();
 };
 
-#endif // SHARE_GC_G1_G1BARRIERSETRUNTIME_HPP
+#endif // SHARE_GC_SHARED_AGNOSTICBARRIERSETRUNTIME_HPP

@@ -72,10 +72,6 @@ bool AgnosticStoreBarrierBuffer::is_empty() const {
 }
 
 AgnosticStoreBarrierEntry* AgnosticStoreBarrierBuffer::pop() {
-  // for (size_t k = 0; k < BufferLength; ++k) {
-  //   const AgnosticStoreBarrierEntry& entry = _buffer[k];
-  //   printf
-  // }
   _current+=16;
   return &_buffer[current()];
 }

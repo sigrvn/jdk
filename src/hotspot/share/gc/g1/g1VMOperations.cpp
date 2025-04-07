@@ -109,7 +109,7 @@ void VM_G1TryInitiateConcMark::doit() {
     public:
       DoThings(bool active) {}
       virtual void do_thread(Thread* t) {
-        printf("art\n");
+        //printf("art\n");
         AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
         CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
         SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
@@ -117,6 +117,7 @@ void VM_G1TryInitiateConcMark::doit() {
         SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
   
         while (buffer->is_empty() == false) {
+          //printf("pasa1\n");
           AgnosticStoreBarrierEntry* entry = buffer->pop();
           oopDesc* lol = entry->_prev;
           oopDesc* ref_addr = entry->_p;
@@ -126,19 +127,18 @@ void VM_G1TryInitiateConcMark::doit() {
           
           if (lol != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, lol);
           
+          printf("ref addr %p\n", (void*)ref_addr);
           if (val == nullptr) continue;
-          if (G1HeapRegion::is_in_same_region(ref_addr, val)) {
+          printf("new val  %p\n", (void*)val);
+          if (!G1HeapRegion::is_in_same_region(ref_addr, val)) {
             CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-            printf("1arta %p\n", (void*)result);
-            printf("2arta %p\n", (void*)ref_addr);
-            printf("3arta %p\n", (void*)val);
+            printf("tarjeta  %p\n", (void*)result);
             *result = CardTable::dirty_card_val();
           }
         }
       }
     } closure(true);
     if (Threads_lock->owner() == Thread::current()) {
-      //assert(false, "pita");
       Threads::threads_do(&closure);
     }
 
@@ -165,7 +165,7 @@ void VM_G1CollectForAllocation::doit() {
   public:
     DoThings(bool active) {}
     virtual void do_thread(Thread* t) {
-      printf("art\n");
+      //printf("art\n");
       AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
       CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
       SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
@@ -173,6 +173,7 @@ void VM_G1CollectForAllocation::doit() {
       SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
 
       while (buffer->is_empty() == false) {
+        //printf("pasa2\n");
         AgnosticStoreBarrierEntry* entry = buffer->pop();
         oopDesc* lol = entry->_prev;
         oopDesc* ref_addr = entry->_p;
@@ -182,19 +183,18 @@ void VM_G1CollectForAllocation::doit() {
         
         if (lol != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, lol);
         
+        printf("ref addr %p\n", (void*)ref_addr);
         if (val == nullptr) continue;
-        if (G1HeapRegion::is_in_same_region(ref_addr, val)) {
+        printf("new val  %p\n", (void*)val);
+        if (!G1HeapRegion::is_in_same_region(ref_addr, val)) {
           CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-          printf("1arta %p\n", (void*)result);
-          printf("2arta %p\n", (void*)ref_addr);
-          printf("3arta %p\n", (void*)val);
+          printf("tarjeta  %p\n", (void*)result);
           *result = CardTable::dirty_card_val();
         }
       }
     }
   } closure(true);
   if (Threads_lock->owner() == Thread::current()) {
-    //assert(false, "pita");
     Threads::threads_do(&closure);
   }
 

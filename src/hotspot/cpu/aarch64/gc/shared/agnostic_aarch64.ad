@@ -113,17 +113,16 @@ instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNo
 
 // This pattern is generated automatically from g1_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
-instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegPNoSp tmp4, rFlagsReg cr)
+instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
   predicate(GCASB && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem (EncodeP src)));
-  effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, TEMP tmp4, KILL cr);
+  effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
   format %{ "encode_heap_oop $tmp1, $src\n\t"
             "strw  $tmp1, $mem\t# compressed ptr" %}
   ins_encode %{
     const Address ref_addr = Address($mem$$Register);
-    /*const Address n = Address($tmp4$$Register);*/
     async_barrier(masm, this,
                   ref_addr /* obj */,
                   $tmp1$$Register /* pre_val */,

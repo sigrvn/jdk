@@ -43,6 +43,7 @@
 #include "register_aarch64.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/sharedRuntime.hpp"
+#include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 #ifdef COMPILER1
 #include "c1/c1_LIRAssembler.hpp"
@@ -93,21 +94,17 @@ static void buffer_store(MacroAssembler* masm,
 void AgnosticBarrierSetAssembler::agnostic_store_barrier_c2(MacroAssembler *masm, Address obj, Register pre_val, Register new_val,
                                                             Register thread, Register tmp1, Register tmp2, AgnosticStoreBarrierStubC2 *stub) {
   assert(thread == rthread, "must be");
-  assert_different_registers(pre_val, tmp1, tmp2);
+  assert_different_registers(pre_val, new_val, tmp1, tmp2);
   assert(pre_val != noreg && tmp1 != noreg && tmp2 != noreg,
          "expecting a register");
 
   //stub->initialize_registers(obj, pre_val, thread, tmp1, tmp2);
-
-  Label done;
 
   __ block_comment("Antón es trilisto");
   // If we are storing NULL, there is nothing to be done; otherwise jump to slow path
   //__ cbnzw(pre_val, *stub->entry());
   __ b(*stub->entry());
   
-
-  __ bind(done);
   __ bind(*stub->continuation());
 }
 
@@ -134,11 +131,12 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
   // The reason to end up in the medium path is that the pre-value was not 'good'.
 
   if (is_native) {
+    ShouldNotReachHere();
     __ b(slow_path);
     __ bind(slow_path_continuation);
     __ b(medium_path_continuation);
   } else if (is_atomic) {
-
+    ShouldNotReachHere();
   } else {
     // A non-atomic relocatable object won't get to the medium fast path due to a
     // raw null in the young generation. We only get here because the field is bad.
@@ -154,29 +152,38 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
 
   {
     SaveLiveRegisters save_live_registers(masm, stub);
-    //__ load_heap_oop(prev_val, ref_addr, noreg, noreg, AS_RAW);
-    //__ mov(c_rarg0, prev_val);
-    __ lea(c_rarg0, ref_addr);
-    __ mov(c_rarg1, rthread);
-    assert_different_registers(c_rarg0, c_rarg1, c_rarg4);
-    __ encode_heap_oop(c_rarg2, n);
-    //__ mov(c_rarg2, n);
 
-    __ lsr(c_rarg4, c_rarg0, CardTable::card_shift());     // tmp1 := card address relative to card table base
+    // Paranoia: we're sure c_rarg0, c_rarg1 and c_rarg2 are different, but they
+    // may be n or ref_addr.base() or ref_addr.index().
+    // Solution:
+    if (c_rarg0 != n) {
+      // If we write into c_rarg0 first we don't lose n
+      __ lea(c_rarg0, ref_addr);
+      // Now write n into c_rarg1. We may be overwritting ref_addr fields but we don't care
+      __ mov(c_rarg1, n);
+    } else {
+      // c_rarg0 is n. We need to put n into c_rarg1. But c_rarg1 may be a field of ref_addr
+      if (c_rarg1 != ref_addr.base() && c_rarg1 != ref_addr.index()) {
+        // Okay, it is not. So we can put n into there without overwritting things
+        __ mov(c_rarg1, n);
+        // By definition of things, ref_addr fields cannot be in c_rarg0 (as it is n)
+        __ lea(c_rarg0, ref_addr);
+        // Sanity check:
+        assert_different_registers(c_rarg1, c_rarg0, ref_addr.base(), ref_addr.index());
+      } else {
+        // Now, one of the ref_addr fields is in c_rarg1. And also n == c_rarg0, so we can put
+        // the address into rscratch1 (rscratch1 != c_rarg0 != c_rarg1)
+        __ lea(rscratch1, ref_addr);
+        // ref_addr is "saved" into rscratch1, so we can move n (c_rarg0) into c_rarg1
+        __ mov(c_rarg1, n);
+        // And bring back the address into c_rarg0
+        __ mov(c_rarg0, rscratch1);
+        // Sanity check:
+        assert_different_registers(c_rarg0, c_rarg1, rscratch1);
+      }
+    }
 
-    Address card_table_addr(rthread, in_bytes(G1ThreadLocalData::card_table_base_offset()));
-    __ ldr(c_rarg3, card_table_addr);                         // tmp2 := card table base address
-    __ add(c_rarg3, c_rarg3, c_rarg4);
-
-    // if (stub->is_native()) {
-    //   __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_native_oop_field_without_healing_addr()));
-    // } else if (stub->is_atomic()) {
-    //   __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_oop_field_with_healing_addr()));
-    // } else if (stub->is_nokeepalive()) {
-    //   __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::no_keepalive_store_barrier_on_oop_field_without_healing_addr()));
-    // } else {
-      __ lea(rscratch1, RuntimeAddress(AgnosticBarrierSetRuntime::buffer_full_addr()));
-    // }
+    __ lea(rscratch1, RuntimeAddress(AgnosticBarrierSetRuntime::buffer_full_addr()));
     __ blr(rscratch1);
   }
 

@@ -34,88 +34,61 @@
 #include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "oops/access.hpp"
 #include "runtime/interfaceSupport.inline.hpp"
+#include "runtime/javaThread.hpp"
 #include "utilities/debug.hpp"
 #include <cstdint>
 #include <cstdio>
 
-void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, JavaThread* thread, oopDesc* n) {
-  //printf("!!!!!!!!!! %lx\n", (long)n);
+void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread, oopDesc* n) {
   SATBMarkQueue& queue = G1ThreadLocalData::satb_mark_queue(thread);
   CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(thread);
   AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+
   while (buffer->is_empty() == false) {
     AgnosticStoreBarrierEntry* entry = buffer->pop();
-    oopDesc* lol = entry->_prev;
+    oopDesc* pre_val = entry->_prev;
     oopDesc* ref_addr = entry->_p;
     if (ref_addr == nullptr) continue;
-    // printf("pre %lx\n", (long)lol);
-    // printf("ref %lx\n", (long)ref_addr);
-    oopDesc* val = ref_addr->obj_field_acquire(0);
-    // printf("loa %lx\n", (long)val);
-    if (lol != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, lol);
-    if (val == nullptr) continue;
-    if (!G1HeapRegion::is_in_same_region(ref_addr, val)) {
+
+    oopDesc* new_val = ref_addr->obj_field_acquire(0);
+
+    if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+
+    printf("ref addr %p\n", (void*)ref_addr);
+    if (new_val == nullptr) continue;
+    printf("new val  %p\n", (void*)new_val);
+    if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
       CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-      //printf("aaaaa %p\n", (void*)result);
+      printf("tarjeta  %p\n", (void*)result);
       *result = CardTable::dirty_card_val();
     }
   }
 
-  // printf("oop %lx\n", (long)oop);
-  oopDesc* val = n;//oop->obj_field_acquire(0);
-  oopDesc* prev = oop->obj_field_acquire(0);
-  // printf("val %lx\n", (long)val);
-  if (prev != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, prev);
-  if (val == nullptr) return;
-  if (!G1HeapRegion::is_in_same_region(oop, val)) {
+  oopDesc* new_val = n;
+  oopDesc* pre_val = oop->obj_field_acquire(0);
+
+  if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+
+  printf("ref addr %p\n", (void*)oop);
+  if (new_val == nullptr) return;
+  printf("new_val  %p\n", (void*)new_val);
+  if (!G1HeapRegion::is_in_same_region(oop, new_val)) {
     CardTable::CardValue* result = &table[uintptr_t(oop) >> CardTable::card_shift()];
-    printf("tarta %p\n", (void*)result);
-    printf("sarta %p\n", (void*)oop);
-    printf("marta %p\n", (void*)val);
+    printf("tarjeta  %p\n", (void*)result);
     *result = CardTable::dirty_card_val();
   }
 }
 
-void AgnosticBarrierSetRuntime::g1_slow_path_post(oopDesc* oop, JavaThread* thread) {
-  CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(thread);
-  AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
-  while (buffer->is_empty() == false) {
-    oopDesc* ref_addr = buffer->pop()->_p;
-    if (ref_addr == nullptr) continue;
-    printf("post %lx\n", (long)ref_addr);
-    oopDesc* val = ref_addr->obj_field_acquire(0);
-    printf("pest %lx\n", (long)val);
-    if (G1HeapRegion::is_in_same_region(ref_addr, val)) {
-      if (val != nullptr) {
-        CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-        printf("tarta %lx\n", (long)result);
-        *result = CardTable::dirty_card_val();
-      }
-    }
-  }
-
-  if (oop == nullptr) return;
-  printf("post %lx\n", (long)oop);
-  oopDesc* val = oop->obj_field_acquire(0);
-  printf("pest %lx\n", (long)val);
-  if (G1HeapRegion::is_in_same_region(oop, val)) {
-    if (val != nullptr) {
-      CardTable::CardValue* result = &table[uintptr_t(oop) >> CardTable::card_shift()];
-      printf("tarta %lx\n", (long)result);
-      *result = CardTable::dirty_card_val();
-    }
-  }
+void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread) {
 }
 
-void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, JavaThread* thread) {
+void AgnosticBarrierSetRuntime::z_slow_path(oopDesc* oop, Thread* thread) {
 }
 
-void AgnosticBarrierSetRuntime::z_slow_path(oopDesc* oop, JavaThread* thread) {
-}
-
-JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p, JavaThread* thread, oopDesc* n, oopDesc* carta))
-  printf("carta %p\n", (void*)carta);
+JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p, oopDesc* n))
   // Buffer is full, let's deal with its contents
+  Thread* thread = Thread::current();
+  assert(thread->is_Java_thread(), "needs to");
   switch (Universe::heap()->kind()) {
   case CollectedHeap::None:
   case CollectedHeap::Epsilon:

@@ -35,11 +35,10 @@
 
 class AgnosticBarrierSetRuntime : public AllStatic {
 private:
-  static void buffer_full(oopDesc* p, JavaThread* thread, oopDesc* n, oopDesc* carta);
-  static void g1_slow_path(oopDesc* oop, JavaThread* thread, oopDesc* n);
-  static void g1_slow_path_post(oopDesc* oop, JavaThread* thread);
-  static void ct_slow_path(oopDesc* oop, JavaThread* thread);
-  static void z_slow_path(oopDesc* oop, JavaThread* thread);
+  static void buffer_full(oopDesc* p, oopDesc* n);
+  static void g1_slow_path(oopDesc* oop, Thread* thread, oopDesc* n);
+  static void ct_slow_path(oopDesc* oop, Thread* thread);
+  static void z_slow_path(oopDesc* oop, Thread* thread);
 public:
   static address buffer_full_addr();
   static void do_magic();

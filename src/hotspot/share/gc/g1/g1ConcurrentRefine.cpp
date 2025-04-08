@@ -211,6 +211,7 @@ bool G1ConcurrentRefineWorkState::swap_java_threads_ct() {
     SuspendibleThreadSetLeaver sts_leave;
 
     G1SwapThreadCardTableClosure cl;
+    assert(false, "java threads swap");
     Handshake::execute(&cl);
   }
 
@@ -250,6 +251,7 @@ bool G1ConcurrentRefineWorkState::swap_gc_threads_ct() {
     } op;
 
     SuspendibleThreadSetLeaver sts_leave;
+    assert(false, "gc threads swap");
     VMThread::execute(&op);
   }
 

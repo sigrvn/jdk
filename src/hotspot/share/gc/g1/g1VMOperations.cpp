@@ -22,6 +22,7 @@
  *
  */
 
+#include "oops/oop.hpp"
 #include "precompiled.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
 #include "gc/g1/g1ConcurrentMarkThread.inline.hpp"
@@ -109,7 +110,6 @@ void VM_G1TryInitiateConcMark::doit() {
     public:
       DoThings(bool active) {}
       virtual void do_thread(Thread* t) {
-        //printf("art\n");
         AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
         CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
         SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
@@ -119,18 +119,18 @@ void VM_G1TryInitiateConcMark::doit() {
         while (buffer->is_empty() == false) {
           //printf("pasa1\n");
           AgnosticStoreBarrierEntry* entry = buffer->pop();
-          oopDesc* lol = entry->_prev;
+          oopDesc* pre_val = entry->_prev;
           oopDesc* ref_addr = entry->_p;
+          oopDesc* new_val = entry->_new;
           if (ref_addr == nullptr) continue;
           
-          oopDesc* val = ref_addr->obj_field_acquire(0);
-          
-          if (lol != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, lol);
+          if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
           
           printf("ref addr %p\n", (void*)ref_addr);
-          if (val == nullptr) continue;
-          printf("new val  %p\n", (void*)val);
-          if (!G1HeapRegion::is_in_same_region(ref_addr, val)) {
+          printf("prev val %p\n", (void*)pre_val);
+          if (new_val == nullptr) continue;
+          printf("new val  %p\n", (void*)new_val);
+          if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
             CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
             printf("tarjeta  %p\n", (void*)result);
             *result = CardTable::dirty_card_val();
@@ -165,7 +165,6 @@ void VM_G1CollectForAllocation::doit() {
   public:
     DoThings(bool active) {}
     virtual void do_thread(Thread* t) {
-      //printf("art\n");
       AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
       CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
       SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
@@ -175,18 +174,18 @@ void VM_G1CollectForAllocation::doit() {
       while (buffer->is_empty() == false) {
         //printf("pasa2\n");
         AgnosticStoreBarrierEntry* entry = buffer->pop();
-        oopDesc* lol = entry->_prev;
+        oopDesc* pre_val = entry->_prev;
         oopDesc* ref_addr = entry->_p;
+        oopDesc* new_val = entry->_new;
         if (ref_addr == nullptr) continue;
         
-        oopDesc* val = ref_addr->obj_field_acquire(0);
-        
-        if (lol != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, lol);
+        if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
         
         printf("ref addr %p\n", (void*)ref_addr);
-        if (val == nullptr) continue;
-        printf("new val  %p\n", (void*)val);
-        if (!G1HeapRegion::is_in_same_region(ref_addr, val)) {
+        printf("prev val %p\n", (void*)pre_val);
+        if (new_val == nullptr) continue;
+        printf("new val  %p\n", (void*)new_val);
+        if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
           CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
           printf("tarjeta  %p\n", (void*)result);
           *result = CardTable::dirty_card_val();

@@ -34,9 +34,11 @@
 struct AgnosticStoreBarrierEntry {
   oopDesc* _p;
   oopDesc* _prev;
+  oopDesc* _new;
 
   static ByteSize p_offset();
   static ByteSize prev_offset();
+  static ByteSize new_offset();
 };
 
 class AgnosticStoreBarrierBuffer : public CHeapObj<mtGC> {

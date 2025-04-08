@@ -134,7 +134,7 @@ instruct g1StorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1StoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(!GCASB && UseG1GC && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
@@ -167,7 +167,7 @@ instruct g1StoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegP
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1StoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(!GCASB && UseG1GC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem src));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);
@@ -200,7 +200,7 @@ instruct g1StoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1EncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && !GCASB && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(!GCASB && UseG1GC && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem (EncodeP src)));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(INSN_COST);
@@ -232,7 +232,7 @@ instruct g1EncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp t
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct g1EncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
 %{
-  predicate(UseG1GC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(!GCASB && UseG1GC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreN mem (EncodeP src)));
   effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
   ins_cost(VOLATILE_REF_COST);

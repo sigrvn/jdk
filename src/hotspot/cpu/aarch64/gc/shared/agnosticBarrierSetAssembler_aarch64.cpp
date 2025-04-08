@@ -60,9 +60,10 @@ static void buffer_store(MacroAssembler* masm,
                          Address ref_addr,
                          Register tmp1,
                          Register tmp2,
+                         Register new_val,
                          Label& slow_path) {
   Address buffer(rthread, AgnosticThreadLocalData::agnostic_store_barrier_buffer_offset());
-  assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2);
+  assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2, new_val);
 
   __ block_comment("Buffering badger");
 
@@ -87,8 +88,10 @@ static void buffer_store(MacroAssembler* masm,
 
   // Load and log the prev value
   __ load_heap_oop(tmp1, ref_addr, noreg, noreg, AS_RAW);
-  //__ ldr(tmp1, tmp1);
   __ str(tmp1, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::prev_offset())));
+
+  // Store the new value
+  __ str(new_val, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::new_offset())));
 }
 
 void AgnosticBarrierSetAssembler::agnostic_store_barrier_c2(MacroAssembler *masm, Address obj, Register pre_val, Register new_val,
@@ -142,7 +145,7 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
     // raw null in the young generation. We only get here because the field is bad.
     // In this path we don't need any self healing, so we can avoid a runtime call
     // most of the time by buffering the store barrier to be applied lazily.
-    buffer_store(masm, ref_addr, prev_val, tmp, slow_path);
+    buffer_store(masm, ref_addr, prev_val, tmp, n, slow_path);
 
     __ bind(slow_path_continuation);
     __ b(medium_path_continuation);
@@ -189,38 +192,6 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
 
   // Stub exit
   __ b(slow_continuation);
-}
-
-static void store_barrier_buffer_add(MacroAssembler* masm,
-                                     Address ref_addr,
-                                     Register tmp1,
-                                     Register tmp2,
-                                     Label& slow_path) {
-  Address buffer(rthread, ZThreadLocalData::store_barrier_buffer_offset());
-  assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2);
-
-  __ ldr(tmp1, buffer);
-
-  // Combined pointer bump and check if the buffer is disabled or full
-  __ ldr(tmp2, Address(tmp1, AgnosticStoreBarrierBuffer::current_offset()));
-  __ cmp(tmp2, (uint8_t)0);
-  __ br(Assembler::EQ, slow_path);
-
-  // Bump the pointer
-  __ sub(tmp2, tmp2, sizeof(AgnosticStoreBarrierEntry));
-  __ str(tmp2, Address(tmp1, ZStoreBarrierBuffer::current_offset()));
-
-  // Compute the buffer entry address
-  __ lea(tmp2, Address(tmp2, AgnosticStoreBarrierBuffer::buffer_offset()));
-  __ add(tmp2, tmp2, tmp1);
-
-  // Compute and log the store address
-  __ lea(tmp1, ref_addr);
-  __ str(tmp1, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::p_offset())));
-
-  // Load and log the prev value
-  __ ldr(tmp1, tmp1);
-  __ str(tmp1, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::prev_offset())));
 }
 
 #undef __

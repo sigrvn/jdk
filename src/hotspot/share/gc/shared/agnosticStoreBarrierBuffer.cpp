@@ -42,6 +42,10 @@ ByteSize AgnosticStoreBarrierEntry::prev_offset() {
   return byte_offset_of(AgnosticStoreBarrierEntry, _prev);
 }
 
+ByteSize AgnosticStoreBarrierEntry::new_offset() {
+  return byte_offset_of(AgnosticStoreBarrierEntry, _new);
+}
+
 ByteSize AgnosticStoreBarrierBuffer::buffer_offset() {
   return byte_offset_of(AgnosticStoreBarrierBuffer, _buffer);
 }
@@ -72,7 +76,7 @@ bool AgnosticStoreBarrierBuffer::is_empty() const {
 }
 
 AgnosticStoreBarrierEntry* AgnosticStoreBarrierBuffer::pop() {
-  _current+=16;
+  _current += sizeof(AgnosticStoreBarrierEntry);
   return &_buffer[current()];
 }
 

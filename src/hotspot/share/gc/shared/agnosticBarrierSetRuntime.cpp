@@ -55,6 +55,7 @@ void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread, oopDe
     if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
 
     printf("ref addr %p\n", (void*)ref_addr);
+    printf("prev val %p\n", (void*)pre_val);
     if (new_val == nullptr) continue;
     printf("new val  %p\n", (void*)new_val);
     if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
@@ -70,6 +71,7 @@ void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread, oopDe
   if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
 
   printf("ref addr %p\n", (void*)oop);
+  printf("prev val %p\n", (void*)pre_val);
   if (new_val == nullptr) return;
   printf("new_val  %p\n", (void*)new_val);
   if (!G1HeapRegion::is_in_same_region(oop, new_val)) {

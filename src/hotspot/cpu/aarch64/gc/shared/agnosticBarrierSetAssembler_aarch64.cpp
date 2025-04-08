@@ -191,36 +191,4 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
   __ b(slow_continuation);
 }
 
-static void store_barrier_buffer_add(MacroAssembler* masm,
-                                     Address ref_addr,
-                                     Register tmp1,
-                                     Register tmp2,
-                                     Label& slow_path) {
-  Address buffer(rthread, ZThreadLocalData::store_barrier_buffer_offset());
-  assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2);
-
-  __ ldr(tmp1, buffer);
-
-  // Combined pointer bump and check if the buffer is disabled or full
-  __ ldr(tmp2, Address(tmp1, AgnosticStoreBarrierBuffer::current_offset()));
-  __ cmp(tmp2, (uint8_t)0);
-  __ br(Assembler::EQ, slow_path);
-
-  // Bump the pointer
-  __ sub(tmp2, tmp2, sizeof(AgnosticStoreBarrierEntry));
-  __ str(tmp2, Address(tmp1, ZStoreBarrierBuffer::current_offset()));
-
-  // Compute the buffer entry address
-  __ lea(tmp2, Address(tmp2, AgnosticStoreBarrierBuffer::buffer_offset()));
-  __ add(tmp2, tmp2, tmp1);
-
-  // Compute and log the store address
-  __ lea(tmp1, ref_addr);
-  __ str(tmp1, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::p_offset())));
-
-  // Load and log the prev value
-  __ ldr(tmp1, tmp1);
-  __ str(tmp1, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::prev_offset())));
-}
-
 #undef __

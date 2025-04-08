@@ -72,7 +72,7 @@ bool AgnosticStoreBarrierBuffer::is_empty() const {
 }
 
 AgnosticStoreBarrierEntry* AgnosticStoreBarrierBuffer::pop() {
-  _current+=16;
+  _current += sizeof(AgnosticStoreBarrierEntry);
   return &_buffer[current()];
 }
 

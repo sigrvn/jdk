@@ -1104,7 +1104,6 @@ void ciEnv::register_method(ciMethod* target,
         // Allow the code to be executed
         MutexLocker ml(NMethodState_lock, Mutex::_no_safepoint_check_flag);
         if (nm->make_in_use()) {
-          nm->print_nmethod(true);
           method->set_code(method, nm);
         }
       } else {

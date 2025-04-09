@@ -151,3 +151,7 @@ bool CardTableBarrierSetC2::array_copy_requires_gc_barriers(bool tightly_coupled
   bool is_oop = is_reference_type(type);
   return is_oop && (!tightly_coupled_alloc || !use_ReduceInitialCardMarks());
 }
+
+void CardTableBarrierSetC2::late_barrier_analysis() const {
+  compute_liveness_at_stubs();
+}

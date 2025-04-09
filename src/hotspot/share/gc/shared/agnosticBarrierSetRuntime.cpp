@@ -23,6 +23,10 @@
 
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1ThreadLocalData.hpp"
+#include "gc/parallel/parallelScavengeHeap.hpp"
+#include "gc/parallel/psCardTable.hpp"
+#include "gc/serial/cardTableRS.hpp"
+#include "gc/serial/serialHeap.hpp"
 #include "gc/shared/agnosticStoreBarrierBuffer.hpp"
 #include "gc/shared/agnosticThreadLocalData.hpp"
 #include "gc/shared/cardTable.hpp"
@@ -81,7 +85,49 @@ void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread, oopDe
   }
 }
 
-void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread) {
+void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread, oopDesc* n) {
+  CardTable::CardValue* table;
+  if (Universe::heap()->kind() == CollectedHeap::Serial) {
+    table = SerialHeap::heap()->rem_set()->byte_map_base();
+    assert((uint64_t)((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base()==(uint64_t)table, "lolky");
+  } else {
+    assert(Universe::heap()->kind() == CollectedHeap::Parallel, "must be");
+    table = ParallelScavengeHeap::heap()->card_table()->byte_map_base();
+  }
+  
+  AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+
+  while (buffer->is_empty() == false) {
+    AgnosticStoreBarrierEntry* entry = buffer->pop();
+    oopDesc* pre_val = entry->_prev;
+    oopDesc* ref_addr = entry->_p;
+    if (ref_addr == nullptr) continue;
+
+    oopDesc* new_val = ref_addr->obj_field_acquire(0);
+
+    printf("ref addr %p\n", (void*)ref_addr);
+    printf("prev val %p\n", (void*)pre_val);
+    if (new_val == nullptr) continue;
+    printf("new val  %p\n", (void*)new_val);
+    CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
+    printf("tarjeta  %p\n", (void*)result);
+    *result = CardTable::dirty_card_val();
+  }
+
+  oopDesc* new_val = n;
+
+  if (Universe::is_in_heap(oop) == false) {
+    printf("me muero");
+  } else {
+    ;
+  }
+
+  printf("ref addr %p\n", (void*)oop);
+  if (new_val == nullptr) return;
+  printf("new_val  %p\n", (void*)new_val);
+  CardTable::CardValue* result = &table[uintptr_t(oop) >> CardTable::card_shift()];
+  printf("tarjeta  %p\n", (void*)result);
+  *result = CardTable::dirty_card_val();
 }
 
 void AgnosticBarrierSetRuntime::z_slow_path(oopDesc* oop, Thread* thread) {
@@ -97,7 +143,7 @@ JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p, oopDesc* n))
     break;
   case CollectedHeap::Serial:
   case CollectedHeap::Parallel:
-    ct_slow_path(p, thread);
+    ct_slow_path(p, thread, n);
     break;
   case CollectedHeap::G1:
     g1_slow_path(p, thread, n);

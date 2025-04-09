@@ -31,13 +31,17 @@
 #include "gc/shared/agnosticThreadLocalData.hpp"
 #include "gc/shared/gc_globals.hpp"
 #include "gc/shared/satbMarkQueue.hpp"
+#include "gc/shared/cardTable.hpp"
 #include "runtime/javaThread.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
 class CardTableThreadLocalData : AgnosticThreadLocalData {
 private:
-  CardTableThreadLocalData() {
+  CardTable::CardValue* _byte_map_base;
+
+  CardTableThreadLocalData()
+  {
   }
 
   static CardTableThreadLocalData* data(Thread* thread) {

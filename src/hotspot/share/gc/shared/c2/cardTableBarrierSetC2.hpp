@@ -44,6 +44,7 @@ protected:
 public:
   virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
   virtual bool array_copy_requires_gc_barriers(bool tightly_coupled_alloc, BasicType type, bool is_clone, bool is_clone_instance, ArrayCopyPhase phase) const;
+  virtual void late_barrier_analysis() const;
 
   bool use_ReduceInitialCardMarks() const;
 };

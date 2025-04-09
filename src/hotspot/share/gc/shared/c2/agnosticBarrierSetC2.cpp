@@ -23,7 +23,9 @@
  */
 
 #include "gc/shared/c2/agnosticBarrierSetC2.hpp"
+#include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/shared/agnosticBarrierSetAssembler.hpp"
+#include "gc/shared/c2/modRefBarrierSetC2.hpp"
 #include "opto/output.hpp"
 #include <cstdio>
 
@@ -73,26 +75,36 @@ public:
 };
 
 Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) const {
+  // return ModRefBarrierSetC2::store_at_resolved(access, val);
+  // DecoratorSet decorators = access.decorators();
+  
+  // bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
+  // bool in_heap = (decorators & IN_HEAP) != 0;
+  // bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
+  // bool need_store_barrier = !(tightly_coupled_alloc && use_ReduceInitialCardMarks()) && (in_heap || anonymous);
+  // bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
+  // if (access.is_oop() && need_store_barrier) {
+  //   access.set_barrier_data(G1C2BarrierPre | G1C2BarrierPost);
+  // }
+  // return BarrierSetC2::store_at_resolved(access, val);
   DecoratorSet decorators = access.decorators();
+
+  const TypePtr* adr_type = access.addr().type();
+  Node* adr = access.addr().node();
+
+  bool is_array = (decorators & IS_ARRAY) != 0;
   bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
   bool in_heap = (decorators & IN_HEAP) != 0;
+  bool use_precise = is_array || anonymous;
   bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
-  bool need_store_barrier = !(tightly_coupled_alloc && use_ReduceInitialCardMarks()) && (in_heap || anonymous);
-  bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
-  if (access.is_oop() && need_store_barrier) {
-    access.set_barrier_data(get_store_barrier(access));
-    if (tightly_coupled_alloc) {
-      assert(!use_ReduceInitialCardMarks(),
-             "post-barriers are only needed for tightly-coupled initialization stores when ReduceInitialCardMarks is disabled");
-      // Pre-barriers are unnecessary for tightly-coupled initialization stores.
-      access.set_barrier_data(access.barrier_data() & ~G1C2BarrierPre);
-    }
+
+  if (!access.is_oop() || tightly_coupled_alloc || (!in_heap && !anonymous)) {
+    return BarrierSetC2::store_at_resolved(access, val);
   }
-  if (no_keepalive) {
-    // No keep-alive means no need for the pre-barrier.
-    access.set_barrier_data(access.barrier_data() & ~G1C2BarrierPre);
-  }
-  return BarrierSetC2::store_at_resolved(access, val);
+  access.set_barrier_data(G1C2BarrierPre | G1C2BarrierPost);
+  Node* store = BarrierSetC2::store_at_resolved(access, val);
+
+  return store;
 }
 
 void* AgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
@@ -103,8 +115,25 @@ static AgnosticBarrierSetC2State* barrier_set_state() {
   return reinterpret_cast<AgnosticBarrierSetC2State*>(Compile::current()->barrier_set_state());
 }
 
+void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
+  MacroAssembler masm(&cb);
+  GrowableArray<AgnosticBarrierStubC2*>* const stubs = barrier_set_state()->stubs();
+  barrier_set_state()->set_stubs_start_offset(masm.offset());
+
+  for (int i = 0; i < stubs->length(); i++) {
+    // Make sure there is enough space in the code buffer
+    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::MAX_inst_size) && cb.blob() == nullptr) {
+      ciEnv::current()->record_failure("CodeCache is full");
+      return;
+    }
+
+    stubs->at(i)->emit_code(masm);
+  }
+
+  masm.flush();
+}
+
 AgnosticStoreBarrierStubC2* AgnosticStoreBarrierStubC2::create(const MachNode* node, Address ref_addr, Register prev_val, Register tmp, bool is_native, bool is_atomic, Register n) {
-  //AARCH64_ONLY(fatal("Should use ZStoreBarrierStubC2Aarch64::create"));
   AgnosticStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) AgnosticStoreBarrierStubC2(node, ref_addr, prev_val, tmp, is_native, is_atomic, n);
   if (!Compile::current()->output()->in_scratch_emit_size()) {
     barrier_set_state()->stubs()->append(stub);

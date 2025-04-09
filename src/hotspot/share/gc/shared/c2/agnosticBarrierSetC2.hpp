@@ -34,12 +34,13 @@
 
 const int AgnosticBarrier = 1;  // Async agnostic barriers are always pre
 
-class AgnosticBarrierSetC2: public G1BarrierSetC2 {
+class AgnosticBarrierSetC2: public CardTableBarrierSetC2 {
 protected:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
 
 public:
   virtual void* create_barrier_state(Arena* comp_arena) const;
+  virtual void emit_stubs(CodeBuffer& cb) const;
 };
 
 class AgnosticBarrierStubC2 : public BarrierStubC2 {
@@ -57,10 +58,10 @@ private:
   bool _is_atomic;
 
 protected:
-  AgnosticStoreBarrierStubC2(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, Register n);
+  AgnosticStoreBarrierStubC2(const MachNode* node, Address ref_addr, Register prev_val, Register tmp, bool is_native, bool is_atomic, Register n);
   
 public:
-  static AgnosticStoreBarrierStubC2* create(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, Register n);
+  static AgnosticStoreBarrierStubC2* create(const MachNode* node, Address ref_addr, Register prev_val, Register tmp, bool is_native, bool is_atomic, Register n);
   void emit_code(MacroAssembler& masm);
 
   Address ref_addr() const  {    return _ref_addr;  }

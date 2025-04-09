@@ -41,7 +41,7 @@ struct AgnosticStoreBarrierEntry {
 
 class AgnosticStoreBarrierBuffer : public CHeapObj<mtGC> {
 private:
-  static const size_t BufferLength    = 32;
+  static const size_t BufferLength    = 0;
   static const size_t BufferSizeBytes = BufferLength * sizeof(AgnosticStoreBarrierEntry);
 
   AgnosticStoreBarrierEntry _buffer[BufferLength];

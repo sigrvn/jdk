@@ -31,6 +31,10 @@ class PhaseTransform;
 class Type;
 class TypeFunc;
 
+const uint8_t G1C2BarrierPre          = 1;
+const uint8_t G1C2BarrierPost         = 2;
+const uint8_t G1C2BarrierPostNotNull  = 4;
+
 class G1BarrierStubC2 : public BarrierStubC2 {
 public:
   static bool needs_pre_barrier(const MachNode* node);

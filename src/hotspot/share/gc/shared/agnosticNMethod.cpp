@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -22,23 +22,15 @@
  *
  */
 
-#ifndef SHARE_GC_SHARED_BARRIERDATA_HPP
-#define SHARE_GC_SHARED_BARRIERDATA_HPP
+#include "code/relocInfo.hpp"
+#include "gc/agnostic/agnosticNMethod.hpp"
 
-#include "utilities/globalDefinitions.hpp"
-
-// BarrierData holds internal barrier metadata used by C2 for each supported GC.
-typedef uint16_t BarrierData;
-
-const BarrierData G1C2BarrierPre          =   1;
-const BarrierData G1C2BarrierPost         =   2;
-const BarrierData G1C2BarrierPostNotNull  =   4;
-
-const BarrierData ZBarrierStrong          =   8;
-const BarrierData ZBarrierWeak            =  16;
-const BarrierData ZBarrierPhantom         =  32;
-const BarrierData ZBarrierNoKeepalive     =  64;
-const BarrierData ZBarrierNative          = 128;
-const BarrierData ZBarrierElided          = 256;
-
-#endif // SHARE_GC_SHARED_BARRIERDATA_HPP
+void AgnosticNMethod::register_nmethod(nmethod* nm, AgnosticNMethodPatcher& patcher) {
+  RelocIterator iter(nm);
+  while (iter.next()) {
+    if (iter.type() == relocInfo::barrier_type) {
+      barrier_Relocation* const reloc = iter.barrier_reloc();
+      patcher.patch_instruction(reloc->addr(), reloc->format());
+    }
+  }
+}

@@ -25,6 +25,7 @@
 #include "asm/macroAssembler.inline.hpp"
 #include "code/codeBlob.hpp"
 #include "code/vmreg.inline.hpp"
+#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "gc/z/zAddress.hpp"
 #include "gc/z/zBarrier.inline.hpp"
 #include "gc/z/zBarrierSet.hpp"
@@ -33,7 +34,6 @@
 #include "gc/z/zThreadLocalData.hpp"
 #include "memory/resourceArea.hpp"
 #include "nativeInst_aarch64.hpp"
-#include "runtime/icache.hpp"
 #include "runtime/jniHandles.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/macros.hpp"
@@ -59,56 +59,56 @@
 // Helper for saving and restoring registers across a runtime call that does
 // not have any live vector registers.
 class ZRuntimeCallSpill {
-private:
-  MacroAssembler* _masm;
-  Register _result;
+  private:
+    MacroAssembler* _masm;
+    Register _result;
 
-  void save() {
-    MacroAssembler* masm = _masm;
+    void save() {
+      MacroAssembler* masm = _masm;
 
-    __ enter(true /* strip_ret_addr */);
-    if (_result != noreg) {
-      __ push_call_clobbered_registers_except(RegSet::of(_result));
-    } else {
-      __ push_call_clobbered_registers();
+      __ enter(true /* strip_ret_addr */);
+      if (_result != noreg) {
+        __ push_call_clobbered_registers_except(RegSet::of(_result));
+      } else {
+        __ push_call_clobbered_registers();
+      }
     }
-  }
 
-  void restore() {
-    MacroAssembler* masm = _masm;
+    void restore() {
+      MacroAssembler* masm = _masm;
 
-    if (_result != noreg) {
-      // Make sure _result has the return value.
-      if (_result != r0) {
-        __ mov(_result, r0);
+      if (_result != noreg) {
+        // Make sure _result has the return value.
+        if (_result != r0) {
+          __ mov(_result, r0);
+        }
+
+        __ pop_call_clobbered_registers_except(RegSet::of(_result));
+      } else {
+        __ pop_call_clobbered_registers();
+      }
+      __ leave();
+    }
+
+  public:
+    ZRuntimeCallSpill(MacroAssembler* masm, Register result)
+      : _masm(masm),
+      _result(result) {
+        save();
       }
 
-      __ pop_call_clobbered_registers_except(RegSet::of(_result));
-    } else {
-      __ pop_call_clobbered_registers();
+    ~ZRuntimeCallSpill() {
+      restore();
     }
-    __ leave();
-  }
-
-public:
-  ZRuntimeCallSpill(MacroAssembler* masm, Register result)
-    : _masm(masm),
-      _result(result) {
-    save();
-  }
-
-  ~ZRuntimeCallSpill() {
-    restore();
-  }
 };
 
 void ZBarrierSetAssembler::load_at(MacroAssembler* masm,
-                                   DecoratorSet decorators,
-                                   BasicType type,
-                                   Register dst,
-                                   Address src,
-                                   Register tmp1,
-                                   Register tmp2) {
+    DecoratorSet decorators,
+    BasicType type,
+    Register dst,
+    Address src,
+    Register tmp1,
+    Register tmp2) {
   if (!ZBarrierSet::barrier_needed(decorators, type)) {
     // Barrier not needed
     BarrierSetAssembler::load_at(masm, decorators, type, dst, src, tmp1, tmp2);
@@ -165,14 +165,14 @@ void ZBarrierSetAssembler::load_at(MacroAssembler* masm,
 }
 
 void ZBarrierSetAssembler::store_barrier_fast(MacroAssembler* masm,
-                                              Address ref_addr,
-                                              Register rnew_zaddress,
-                                              Register rnew_zpointer,
-                                              Register rtmp,
-                                              bool in_nmethod,
-                                              bool is_atomic,
-                                              Label& medium_path,
-                                              Label& medium_path_continuation) const {
+    Address ref_addr,
+    Register rnew_zaddress,
+    Register rnew_zpointer,
+    Register rtmp,
+    bool in_nmethod,
+    bool is_atomic,
+    Label& medium_path,
+    Label& medium_path_continuation) const {
   __ block_comment("! store_barrier_fast START");
   assert_different_registers(ref_addr.base(), rnew_zpointer, rtmp);
   assert_different_registers(ref_addr.index(), rnew_zpointer, rtmp);
@@ -227,10 +227,10 @@ void ZBarrierSetAssembler::store_barrier_fast(MacroAssembler* masm,
 }
 
 static void store_barrier_buffer_add(MacroAssembler* masm,
-                                     Address ref_addr,
-                                     Register tmp1,
-                                     Register tmp2,
-                                     Label& slow_path) {
+    Address ref_addr,
+    Register tmp1,
+    Register tmp2,
+    Label& slow_path) {
   __ block_comment("! store_barrier_buffer_add START");
   Address buffer(rthread, ZThreadLocalData::store_barrier_buffer_offset());
   assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2);
@@ -261,15 +261,15 @@ static void store_barrier_buffer_add(MacroAssembler* masm,
 }
 
 void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
-                                                Address ref_addr,
-                                                Register rtmp1,
-                                                Register rtmp2,
-                                                Register rtmp3,
-                                                bool is_native,
-                                                bool is_atomic,
-                                                Label& medium_path_continuation,
-                                                Label& slow_path,
-                                                Label& slow_path_continuation) const {
+    Address ref_addr,
+    Register rtmp1,
+    Register rtmp2,
+    Register rtmp3,
+    bool is_native,
+    bool is_atomic,
+    Label& medium_path_continuation,
+    Label& slow_path,
+    Label& slow_path_continuation) const {
   __ block_comment("! store_barrier_medium START");
   assert_different_registers(ref_addr.base(), ref_addr.index(), rtmp1, rtmp2);
 
@@ -290,9 +290,9 @@ void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
     __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
     __ movzw(rtmp1, barrier_Relocation::unpatched);
     __ cmpxchg(rtmp2, zr, rtmp1,
-               Assembler::xword,
-               false /* acquire */, false /* release */, true /* weak */,
-               rtmp3);
+        Assembler::xword,
+        false /* acquire */, false /* release */, true /* weak */,
+        rtmp3);
     __ br(Assembler::NE, slow_path);
 
     __ bind(slow_path_continuation);
@@ -303,10 +303,10 @@ void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
     // In this path we don't need any self healing, so we can avoid a runtime call
     // most of the time by buffering the store barrier to be applied lazily.
     store_barrier_buffer_add(masm,
-                             ref_addr,
-                             rtmp1,
-                             rtmp2,
-                             slow_path);
+        ref_addr,
+        rtmp1,
+        rtmp2,
+        slow_path);
     __ bind(slow_path_continuation);
     __ b(medium_path_continuation);
   }
@@ -314,13 +314,13 @@ void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
 }
 
 void ZBarrierSetAssembler::store_at(MacroAssembler* masm,
-                                    DecoratorSet decorators,
-                                    BasicType type,
-                                    Address dst,
-                                    Register val,
-                                    Register tmp1,
-                                    Register tmp2,
-                                    Register tmp3) {
+    DecoratorSet decorators,
+    BasicType type,
+    Address dst,
+    Register val,
+    Register tmp1,
+    Register tmp2,
+    Register tmp3) {
   if (!ZBarrierSet::barrier_needed(decorators, type)) {
     BarrierSetAssembler::store_at(masm, decorators, type, dst, val, tmp1, tmp2, tmp3);
     return;
@@ -350,15 +350,15 @@ void ZBarrierSetAssembler::store_at(MacroAssembler* masm,
     __ b(done);
     __ bind(medium);
     store_barrier_medium(masm,
-                         dst,
-                         tmp1,
-                         tmp2,
-                         noreg /* tmp3 */,
-                         false /* is_native */,
-                         false /* is_atomic */,
-                         medium_continuation,
-                         slow,
-                         slow_continuation);
+        dst,
+        tmp1,
+        tmp2,
+        noreg /* tmp3 */,
+        false /* is_native */,
+        false /* is_atomic */,
+        medium_continuation,
+        slow,
+        slow_continuation);
 
     __ bind(slow);
     {
@@ -390,68 +390,68 @@ static void load_wide_arraycopy_masks(MacroAssembler* masm) {
 }
 
 class ZCopyRuntimeCallSpill {
-private:
-  MacroAssembler* _masm;
-  Register _result;
+  private:
+    MacroAssembler* _masm;
+    Register _result;
 
-  void save() {
-    MacroAssembler* masm = _masm;
+    void save() {
+      MacroAssembler* masm = _masm;
 
-    __ enter(true /* strip_ret_addr */);
-    if (_result != noreg) {
-      __ push(__ call_clobbered_gp_registers() - RegSet::of(_result), sp);
-    } else {
-      __ push(__ call_clobbered_gp_registers(), sp);
-    }
-    int neonSize = wordSize * 2;
-    __ sub(sp, sp, 4 * neonSize);
-    __ st1(v0, v1, v2, v3, Assembler::T16B, Address(sp, 0));
-    __ sub(sp, sp, 4 * neonSize);
-    __ st1(v4, v5, v6, v7, Assembler::T16B, Address(sp, 0));
-    __ sub(sp, sp, 4 * neonSize);
-    __ st1(v16, v17, v18, v19, Assembler::T16B, Address(sp, 0));
-  }
-
-  void restore() {
-    MacroAssembler* masm = _masm;
-
-    int neonSize = wordSize * 2;
-    __ ld1(v16, v17, v18, v19, Assembler::T16B, Address(sp, 0));
-    __ add(sp, sp, 4 * neonSize);
-    __ ld1(v4, v5, v6, v7, Assembler::T16B, Address(sp, 0));
-    __ add(sp, sp, 4 * neonSize);
-    __ ld1(v0, v1, v2, v3, Assembler::T16B, Address(sp, 0));
-    __ add(sp, sp, 4 * neonSize);
-    if (_result != noreg) {
-      if (_result != r0) {
-        __ mov(_result, r0);
+      __ enter(true /* strip_ret_addr */);
+      if (_result != noreg) {
+        __ push(__ call_clobbered_gp_registers() - RegSet::of(_result), sp);
+      } else {
+        __ push(__ call_clobbered_gp_registers(), sp);
       }
-      __ pop(__ call_clobbered_gp_registers() - RegSet::of(_result), sp);
-    } else {
-      __ pop(__ call_clobbered_gp_registers(), sp);
+      int neonSize = wordSize * 2;
+      __ sub(sp, sp, 4 * neonSize);
+      __ st1(v0, v1, v2, v3, Assembler::T16B, Address(sp, 0));
+      __ sub(sp, sp, 4 * neonSize);
+      __ st1(v4, v5, v6, v7, Assembler::T16B, Address(sp, 0));
+      __ sub(sp, sp, 4 * neonSize);
+      __ st1(v16, v17, v18, v19, Assembler::T16B, Address(sp, 0));
     }
-    __ leave();
-  }
 
-public:
-  ZCopyRuntimeCallSpill(MacroAssembler* masm, Register result)
-    : _masm(masm),
+    void restore() {
+      MacroAssembler* masm = _masm;
+
+      int neonSize = wordSize * 2;
+      __ ld1(v16, v17, v18, v19, Assembler::T16B, Address(sp, 0));
+      __ add(sp, sp, 4 * neonSize);
+      __ ld1(v4, v5, v6, v7, Assembler::T16B, Address(sp, 0));
+      __ add(sp, sp, 4 * neonSize);
+      __ ld1(v0, v1, v2, v3, Assembler::T16B, Address(sp, 0));
+      __ add(sp, sp, 4 * neonSize);
+      if (_result != noreg) {
+        if (_result != r0) {
+          __ mov(_result, r0);
+        }
+        __ pop(__ call_clobbered_gp_registers() - RegSet::of(_result), sp);
+      } else {
+        __ pop(__ call_clobbered_gp_registers(), sp);
+      }
+      __ leave();
+    }
+
+  public:
+    ZCopyRuntimeCallSpill(MacroAssembler* masm, Register result)
+      : _masm(masm),
       _result(result) {
-    save();
-  }
+        save();
+      }
 
-  ~ZCopyRuntimeCallSpill() {
-    restore();
-  }
+    ~ZCopyRuntimeCallSpill() {
+      restore();
+    }
 };
 
 void ZBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm,
-                                              DecoratorSet decorators,
-                                              bool is_oop,
-                                              Register src,
-                                              Register dst,
-                                              Register count,
-                                              RegSet saved_regs) {
+    DecoratorSet decorators,
+    bool is_oop,
+    Register src,
+    Register dst,
+    Register count,
+    RegSet saved_regs) {
   if (!is_oop) {
     // Barrier not needed
     return;
@@ -465,9 +465,9 @@ void ZBarrierSetAssembler::arraycopy_prologue(MacroAssembler* masm,
 }
 
 static void copy_load_barrier(MacroAssembler* masm,
-                              Register ref,
-                              Address src,
-                              Register tmp) {
+    Register ref,
+    Address src,
+    Register tmp) {
   Label done;
 
   __ ldr(tmp, Address(rthread, ZThreadLocalData::load_bad_mask_offset()));
@@ -496,11 +496,11 @@ static void copy_load_barrier(MacroAssembler* masm,
 }
 
 static void copy_load_barrier(MacroAssembler* masm,
-                              FloatRegister ref,
-                              Address src,
-                              Register tmp1,
-                              Register tmp2,
-                              FloatRegister vec_tmp) {
+    FloatRegister ref,
+    Address src,
+    Register tmp1,
+    Register tmp2,
+    FloatRegister vec_tmp) {
   Label done;
 
   // Test reference against bad mask. If mask bad, then we need to fix it up.
@@ -521,11 +521,11 @@ static void copy_load_barrier(MacroAssembler* masm,
 }
 
 static void copy_store_barrier(MacroAssembler* masm,
-                               Register pre_ref,
-                               Register new_ref,
-                               Address src,
-                               Register tmp1,
-                               Register tmp2) {
+    Register pre_ref,
+    Register new_ref,
+    Address src,
+    Register tmp1,
+    Register tmp2) {
   Label done;
   Label slow;
 
@@ -557,13 +557,13 @@ static void copy_store_barrier(MacroAssembler* masm,
 }
 
 static void copy_store_barrier(MacroAssembler* masm,
-                               FloatRegister pre_ref,
-                               FloatRegister new_ref,
-                               Address src,
-                               Register tmp1,
-                               Register tmp2,
-                               Register tmp3,
-                               FloatRegister vec_tmp) {
+    FloatRegister pre_ref,
+    FloatRegister new_ref,
+    Address src,
+    Register tmp1,
+    Register tmp2,
+    Register tmp3,
+    FloatRegister vec_tmp) {
   Label done;
 
   // Test reference against bad mask. If mask bad, then we need to fix it up.
@@ -588,54 +588,54 @@ static void copy_store_barrier(MacroAssembler* masm,
 }
 
 class ZAdjustAddress {
-private:
-  MacroAssembler* _masm;
-  Address _addr;
-  int _pre_adjustment;
-  int _post_adjustment;
+  private:
+    MacroAssembler* _masm;
+    Address _addr;
+    int _pre_adjustment;
+    int _post_adjustment;
 
-  void pre() {
-    if (_pre_adjustment != 0) {
-      _masm->add(_addr.base(), _addr.base(), _addr.offset());
+    void pre() {
+      if (_pre_adjustment != 0) {
+        _masm->add(_addr.base(), _addr.base(), _addr.offset());
+      }
     }
-  }
 
-  void post() {
-    if (_post_adjustment != 0) {
-      _masm->add(_addr.base(), _addr.base(), _addr.offset());
+    void post() {
+      if (_post_adjustment != 0) {
+        _masm->add(_addr.base(), _addr.base(), _addr.offset());
+      }
     }
-  }
 
-public:
-  ZAdjustAddress(MacroAssembler* masm, Address addr)
-    : _masm(masm),
+  public:
+    ZAdjustAddress(MacroAssembler* masm, Address addr)
+      : _masm(masm),
       _addr(addr),
       _pre_adjustment(addr.getMode() == Address::pre ? addr.offset() : 0),
       _post_adjustment(addr.getMode() == Address::post ? addr.offset() : 0) {
-    pre();
-  }
+        pre();
+      }
 
-  ~ZAdjustAddress() {
-    post();
-  }
-
-  Address address() {
-    if (_pre_adjustment != 0 || _post_adjustment != 0) {
-      return Address(_addr.base(), 0);
-    } else {
-      return Address(_addr.base(), _addr.offset());
+    ~ZAdjustAddress() {
+      post();
     }
-  }
+
+    Address address() {
+      if (_pre_adjustment != 0 || _post_adjustment != 0) {
+        return Address(_addr.base(), 0);
+      } else {
+        return Address(_addr.base(), _addr.offset());
+      }
+    }
 };
 
 void ZBarrierSetAssembler::copy_load_at(MacroAssembler* masm,
-                                        DecoratorSet decorators,
-                                        BasicType type,
-                                        size_t bytes,
-                                        Register dst1,
-                                        Register dst2,
-                                        Address src,
-                                        Register tmp) {
+    DecoratorSet decorators,
+    BasicType type,
+    size_t bytes,
+    Register dst1,
+    Register dst2,
+    Address src,
+    Register tmp) {
   if (!is_reference_type(type)) {
     BarrierSetAssembler::copy_load_at(masm, decorators, type, bytes, dst1, dst2, src, noreg);
     return;
@@ -660,15 +660,15 @@ void ZBarrierSetAssembler::copy_load_at(MacroAssembler* masm,
 }
 
 void ZBarrierSetAssembler::copy_store_at(MacroAssembler* masm,
-                                         DecoratorSet decorators,
-                                         BasicType type,
-                                         size_t bytes,
-                                         Address dst,
-                                         Register src1,
-                                         Register src2,
-                                         Register tmp1,
-                                         Register tmp2,
-                                         Register tmp3) {
+    DecoratorSet decorators,
+    BasicType type,
+    size_t bytes,
+    Address dst,
+    Register src1,
+    Register src2,
+    Register tmp1,
+    Register tmp2,
+    Register tmp3) {
   if (!is_reference_type(type)) {
     BarrierSetAssembler::copy_store_at(masm, decorators, type, bytes, dst, src1, src2, noreg, noreg, noreg);
     return;
@@ -717,15 +717,15 @@ void ZBarrierSetAssembler::copy_store_at(MacroAssembler* masm,
 }
 
 void ZBarrierSetAssembler::copy_load_at(MacroAssembler* masm,
-                                        DecoratorSet decorators,
-                                        BasicType type,
-                                        size_t bytes,
-                                        FloatRegister dst1,
-                                        FloatRegister dst2,
-                                        Address src,
-                                        Register tmp1,
-                                        Register tmp2,
-                                        FloatRegister vec_tmp) {
+    DecoratorSet decorators,
+    BasicType type,
+    size_t bytes,
+    FloatRegister dst1,
+    FloatRegister dst2,
+    Address src,
+    Register tmp1,
+    Register tmp2,
+    FloatRegister vec_tmp) {
   if (!is_reference_type(type)) {
     BarrierSetAssembler::copy_load_at(masm, decorators, type, bytes, dst1, dst2, src, noreg, noreg, fnoreg);
     return;
@@ -745,18 +745,18 @@ void ZBarrierSetAssembler::copy_load_at(MacroAssembler* masm,
 }
 
 void ZBarrierSetAssembler::copy_store_at(MacroAssembler* masm,
-                                         DecoratorSet decorators,
-                                         BasicType type,
-                                         size_t bytes,
-                                         Address dst,
-                                         FloatRegister src1,
-                                         FloatRegister src2,
-                                         Register tmp1,
-                                         Register tmp2,
-                                         Register tmp3,
-                                         FloatRegister vec_tmp1,
-                                         FloatRegister vec_tmp2,
-                                         FloatRegister vec_tmp3) {
+    DecoratorSet decorators,
+    BasicType type,
+    size_t bytes,
+    Address dst,
+    FloatRegister src1,
+    FloatRegister src2,
+    Register tmp1,
+    Register tmp2,
+    Register tmp3,
+    FloatRegister vec_tmp1,
+    FloatRegister vec_tmp2,
+    FloatRegister vec_tmp3) {
   if (!is_reference_type(type)) {
     BarrierSetAssembler::copy_store_at(masm, decorators, type, bytes, dst, src1, src2, noreg, noreg, noreg, fnoreg, fnoreg, fnoreg);
     return;
@@ -794,10 +794,10 @@ void ZBarrierSetAssembler::copy_store_at(MacroAssembler* masm,
 }
 
 void ZBarrierSetAssembler::try_resolve_jobject_in_native(MacroAssembler* masm,
-                                                         Register jni_env,
-                                                         Register robj,
-                                                         Register tmp,
-                                                         Label& slowpath) {
+    Register jni_env,
+    Register robj,
+    Register tmp,
+    Label& slowpath) {
   BLOCK_COMMENT("ZBarrierSetAssembler::try_resolve_jobject_in_native {");
 
   Label done, tagged, weak_tagged, uncolor;
@@ -843,30 +843,6 @@ void ZBarrierSetAssembler::try_resolve_jobject_in_native(MacroAssembler* masm,
   BLOCK_COMMENT("} ZBarrierSetAssembler::try_resolve_jobject_in_native");
 }
 
-static uint16_t patch_barrier_relocation_value(int format) {
-  switch (format) {
-  case AgnosticBarrierRelocationFormatAddrOffsetBeforeLdr:
-  case AgnosticBarrierRelocationFormatJumpToZStoreBeforeMov:
-    return (uint16_t)0;
-
-  case ZBarrierRelocationFormatLoadGoodBeforeTbX:
-    return (uint16_t)exact_log2(ZPointerRemapped);
-
-  case ZBarrierRelocationFormatMarkBadBeforeMov:
-    return (uint16_t)ZPointerMarkBadMask;
-
-  case ZBarrierRelocationFormatStoreGoodBeforeMov:
-    return (uint16_t)ZPointerStoreGoodMask;
-
-  case ZBarrierRelocationFormatStoreBadBeforeMov:
-    return (uint16_t)ZPointerStoreBadMask;
-
-  default:
-    ShouldNotReachHere();
-    return 0;
-  }
-}
-
 static void change_instruction(uint32_t& instr, uint32_t msb) {
   uint32_t registers = instr & 0x1fu; // last 5 bits.
   instr = msb;
@@ -880,27 +856,69 @@ static void change_immediate(uint32_t& instr, uint32_t imm, uint32_t start, uint
   instr |= imm << start;
 }
 
+static uint16_t patch_barrier_relocation_value(int format) {
+  switch (format) {
+    case AgnosticBarrierRelocationFormatPointerBumpScaleBeforeSub:
+      return (uint16_t)sizeof(ZStoreBarrierEntry);
+
+    case AgnosticBarrierRelocationFormatAddrOffsetSlowBeforeLdr:
+      return (uint16_t)(ZThreadLocalData::store_barrier_buffer_offset()) >> 3;
+
+    case AgnosticBarrierRelocationFormatAddrOffsetSlowIndexBeforeLdr:
+      return (uint16_t)(ZStoreBarrierBuffer::current_offset()) >> 3;
+
+    case AgnosticBarrierRelocationFormatPointerBumpOffsetBeforeStr:
+      return ((uint16_t)ZThreadLocalData::store_barrier_buffer_offset()
+          + (uint16_t)ZStoreBarrierBuffer::current_offset()) >> 3;
+
+    case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
+      return (uint16_t)ZPointerLoadShift;
+
+    case ZBarrierRelocationFormatLoadGoodBeforeTbX:
+      return (uint16_t)exact_log2(ZPointerRemapped);
+
+    case ZBarrierRelocationFormatMarkBadBeforeMov:
+      return (uint16_t)ZPointerMarkBadMask;
+
+    case ZBarrierRelocationFormatStoreGoodBeforeMov:
+      return (uint16_t)ZPointerStoreGoodMask;
+
+    case ZBarrierRelocationFormatStoreBadBeforeMov:
+      return (uint16_t)ZPointerStoreBadMask;
+
+    default:
+      return 0;
+  }
+}
+
 void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
   const uint16_t value = patch_barrier_relocation_value(format);
   uint32_t* const patch_addr = (uint32_t*)addr;
 
   switch (format) {
-  case AgnosticBarrierRelocationFormatAddrOffsetBeforeLdr:
-    change_instruction(*patch_addr, 0xd2800000u);
-    break;
-  case AgnosticBarrierRelocationFormatJumpToZStoreBeforeMov:
-    change_immediate(*patch_addr, value, 5, 20);
-    break;
-  case ZBarrierRelocationFormatLoadGoodBeforeTbX:
-    change_immediate(*patch_addr, value, 19, 23);
-    break;
-  case ZBarrierRelocationFormatStoreGoodBeforeMov:
-  case ZBarrierRelocationFormatMarkBadBeforeMov:
-  case ZBarrierRelocationFormatStoreBadBeforeMov:
-    change_immediate(*patch_addr, value, 5, 20);
-    break;
-  default:
-    ShouldNotReachHere();
+    case AgnosticBarrierRelocationFormatAddrOffsetSlowBeforeLdr:
+    case AgnosticBarrierRelocationFormatAddrOffsetSlowIndexBeforeLdr:
+    case AgnosticBarrierRelocationFormatPointerBumpOffsetBeforeStr:
+    case AgnosticBarrierRelocationFormatPointerBumpScaleBeforeSub:
+      change_immediate(*patch_addr, value, 10, 21);
+      break;
+
+    case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
+      change_immediate(*patch_addr, value, 10, 15);
+      break;
+
+    case ZBarrierRelocationFormatLoadGoodBeforeTbX:
+      change_immediate(*patch_addr, value, 19, 23);
+      break;
+
+    case ZBarrierRelocationFormatStoreGoodBeforeMov:
+    case ZBarrierRelocationFormatMarkBadBeforeMov:
+    case ZBarrierRelocationFormatStoreBadBeforeMov:
+      change_immediate(*patch_addr, value, 5, 20);
+      break;
+
+    default:
+      ShouldNotReachHere();
   }
 
   OrderAccess::fence();
@@ -931,9 +949,9 @@ void ZBarrierSetAssembler::generate_c1_color(LIR_Assembler* ce, LIR_Opr ref) con
 }
 
 void ZBarrierSetAssembler::generate_c1_load_barrier(LIR_Assembler* ce,
-                                                    LIR_Opr ref,
-                                                    ZLoadBarrierStubC1* stub,
-                                                    bool on_non_strong) const {
+    LIR_Opr ref,
+    ZLoadBarrierStubC1* stub,
+    bool on_non_strong) const {
 
   if (on_non_strong) {
     // Test against MarkBad mask
@@ -955,7 +973,7 @@ void ZBarrierSetAssembler::generate_c1_load_barrier(LIR_Assembler* ce,
 }
 
 void ZBarrierSetAssembler::generate_c1_load_barrier_stub(LIR_Assembler* ce,
-                                                         ZLoadBarrierStubC1* stub) const {
+    ZLoadBarrierStubC1* stub) const {
   // Stub entry
   __ bind(*stub->entry());
 
@@ -1010,40 +1028,40 @@ void ZBarrierSetAssembler::generate_c1_load_barrier_stub(LIR_Assembler* ce,
 }
 
 void ZBarrierSetAssembler::generate_c1_store_barrier(LIR_Assembler* ce,
-                                                     LIR_Address* addr,
-                                                     LIR_Opr new_zaddress,
-                                                     LIR_Opr new_zpointer,
-                                                     ZStoreBarrierStubC1* stub) const {
+    LIR_Address* addr,
+    LIR_Opr new_zaddress,
+    LIR_Opr new_zpointer,
+    ZStoreBarrierStubC1* stub) const {
   Register rnew_zaddress = new_zaddress->as_register();
   Register rnew_zpointer = new_zpointer->as_register();
 
   store_barrier_fast(ce->masm(),
-                     ce->as_Address(addr),
-                     rnew_zaddress,
-                     rnew_zpointer,
-                     rscratch2,
-                     true,
-                     stub->is_atomic(),
-                     *stub->entry(),
-                     *stub->continuation());
+      ce->as_Address(addr),
+      rnew_zaddress,
+      rnew_zpointer,
+      rscratch2,
+      true,
+      stub->is_atomic(),
+      *stub->entry(),
+      *stub->continuation());
 }
 
 void ZBarrierSetAssembler::generate_c1_store_barrier_stub(LIR_Assembler* ce,
-                                                          ZStoreBarrierStubC1* stub) const {
+    ZStoreBarrierStubC1* stub) const {
   // Stub entry
   __ bind(*stub->entry());
   Label slow;
   Label slow_continuation;
   store_barrier_medium(ce->masm(),
-                       ce->as_Address(stub->ref_addr()->as_address_ptr()),
-                       rscratch2,
-                       stub->new_zpointer()->as_register(),
-                       rscratch1,
-                       false /* is_native */,
-                       stub->is_atomic(),
-                       *stub->continuation(),
-                       slow,
-                       slow_continuation);
+      ce->as_Address(stub->ref_addr()->as_address_ptr()),
+      rscratch2,
+      stub->new_zpointer()->as_register(),
+      rscratch1,
+      false /* is_native */,
+      stub->is_atomic(),
+      *stub->continuation(),
+      slow,
+      slow_continuation);
 
   __ bind(slow);
 
@@ -1064,7 +1082,7 @@ void ZBarrierSetAssembler::generate_c1_store_barrier_stub(LIR_Assembler* ce,
 #define __ sasm->
 
 void ZBarrierSetAssembler::generate_c1_load_barrier_runtime_stub(StubAssembler* sasm,
-                                                                 DecoratorSet decorators) const {
+    DecoratorSet decorators) const {
   __ prologue("zgc_load_barrier stub", false);
 
   __ push_call_clobbered_registers_except(RegSet::of(r0));
@@ -1081,7 +1099,7 @@ void ZBarrierSetAssembler::generate_c1_load_barrier_runtime_stub(StubAssembler* 
 }
 
 void ZBarrierSetAssembler::generate_c1_store_barrier_runtime_stub(StubAssembler* sasm,
-                                                                  bool self_healing) const {
+    bool self_healing) const {
   __ prologue("zgc_store_barrier stub", false);
 
   __ push_call_clobbered_registers();
@@ -1108,56 +1126,56 @@ void ZBarrierSetAssembler::generate_c1_store_barrier_runtime_stub(StubAssembler*
 #define __ _masm->
 
 class ZSetupArguments {
-private:
-  MacroAssembler* const _masm;
-  const Register        _ref;
-  const Address         _ref_addr;
+  private:
+    MacroAssembler* const _masm;
+    const Register        _ref;
+    const Address         _ref_addr;
 
-public:
-  ZSetupArguments(MacroAssembler* masm, ZLoadBarrierStubC2* stub)
-    : _masm(masm),
+  public:
+    ZSetupArguments(MacroAssembler* masm, ZLoadBarrierStubC2* stub)
+      : _masm(masm),
       _ref(stub->ref()),
       _ref_addr(stub->ref_addr()) {
 
-    // Setup arguments
-    if (_ref_addr.base() == noreg) {
-      // No self healing
-      if (_ref != c_rarg0) {
-        __ mov(c_rarg0, _ref);
-      }
-      __ mov(c_rarg1, 0);
-    } else {
-      // Self healing
-      if (_ref == c_rarg0) {
-        // _ref is already at correct place
-        __ lea(c_rarg1, _ref_addr);
-      } else if (_ref != c_rarg1) {
-        // _ref is in wrong place, but not in c_rarg1, so fix it first
-        __ lea(c_rarg1, _ref_addr);
-        __ mov(c_rarg0, _ref);
-      } else if (_ref_addr.base() != c_rarg0 && _ref_addr.index() != c_rarg0) {
-        assert(_ref == c_rarg1, "Mov ref first, vacating c_rarg0");
-        __ mov(c_rarg0, _ref);
-        __ lea(c_rarg1, _ref_addr);
-      } else {
-        assert(_ref == c_rarg1, "Need to vacate c_rarg1 and _ref_addr is using c_rarg0");
-        if (_ref_addr.base() == c_rarg0 || _ref_addr.index() == c_rarg0) {
-          __ mov(rscratch2, c_rarg1);
-          __ lea(c_rarg1, _ref_addr);
-          __ mov(c_rarg0, rscratch2);
+        // Setup arguments
+        if (_ref_addr.base() == noreg) {
+          // No self healing
+          if (_ref != c_rarg0) {
+            __ mov(c_rarg0, _ref);
+          }
+          __ mov(c_rarg1, 0);
         } else {
-          ShouldNotReachHere();
+          // Self healing
+          if (_ref == c_rarg0) {
+            // _ref is already at correct place
+            __ lea(c_rarg1, _ref_addr);
+          } else if (_ref != c_rarg1) {
+            // _ref is in wrong place, but not in c_rarg1, so fix it first
+            __ lea(c_rarg1, _ref_addr);
+            __ mov(c_rarg0, _ref);
+          } else if (_ref_addr.base() != c_rarg0 && _ref_addr.index() != c_rarg0) {
+            assert(_ref == c_rarg1, "Mov ref first, vacating c_rarg0");
+            __ mov(c_rarg0, _ref);
+            __ lea(c_rarg1, _ref_addr);
+          } else {
+            assert(_ref == c_rarg1, "Need to vacate c_rarg1 and _ref_addr is using c_rarg0");
+            if (_ref_addr.base() == c_rarg0 || _ref_addr.index() == c_rarg0) {
+              __ mov(rscratch2, c_rarg1);
+              __ lea(c_rarg1, _ref_addr);
+              __ mov(c_rarg0, rscratch2);
+            } else {
+              ShouldNotReachHere();
+            }
+          }
         }
       }
-    }
-  }
 
-  ~ZSetupArguments() {
-    // Transfer result
-    if (_ref != r0) {
-      __ mov(_ref, r0);
+    ~ZSetupArguments() {
+      // Transfer result
+      if (_ref != r0) {
+        __ mov(_ref, r0);
+      }
     }
-  }
 };
 
 #undef __
@@ -1192,15 +1210,15 @@ void ZBarrierSetAssembler::generate_c2_store_barrier_stub(MacroAssembler* masm, 
   Label slow;
   Label slow_continuation;
   store_barrier_medium(masm,
-                       stub->ref_addr(),
-                       stub->new_zpointer(),
-                       rscratch1,
-                       rscratch2,
-                       stub->is_native(),
-                       stub->is_atomic(),
-                       *stub->continuation(),
-                       slow,
-                       slow_continuation);
+      stub->ref_addr(),
+      stub->new_zpointer(),
+      rscratch1,
+      rscratch2,
+      stub->is_native(),
+      stub->is_atomic(),
+      *stub->continuation(),
+      slow,
+      slow_continuation);
 
   __ bind(slow);
 
@@ -1244,20 +1262,20 @@ ZLoadBarrierStubC2Aarch64::ZLoadBarrierStubC2Aarch64(const MachNode* node, Addre
 
 ZLoadBarrierStubC2Aarch64::ZLoadBarrierStubC2Aarch64(const MachNode* node, Address ref_addr, Register ref, int offset)
   : ZLoadBarrierStubC2(node, ref_addr, ref), _test_and_branch_reachable_entry(), _offset(offset), _deferred_emit(false), _test_and_branch_reachable(false) {
-  PhaseOutput* const output = Compile::current()->output();
-  if (output->in_scratch_emit_size()) {
-    return;
+    PhaseOutput* const output = Compile::current()->output();
+    if (output->in_scratch_emit_size()) {
+      return;
+    }
+    const int code_size = output->buffer_sizing_data()->_code;
+    const int offset_code = _offset;
+    // Assumption that the stub can always be reached from a branch immediate. (128 M Product, 2 M Debug)
+    // Same assumption is made in z_aarch64.ad
+    const int trampoline_offset = trampoline_stubs_count() * NativeInstruction::instruction_size;
+    _test_and_branch_reachable = aarch64_test_and_branch_reachable(offset_code, code_size + trampoline_offset);
+    if (_test_and_branch_reachable) {
+      inc_trampoline_stubs_count();
+    }
   }
-  const int code_size = output->buffer_sizing_data()->_code;
-  const int offset_code = _offset;
-  // Assumption that the stub can always be reached from a branch immediate. (128 M Product, 2 M Debug)
-  // Same assumption is made in z_aarch64.ad
-  const int trampoline_offset = trampoline_stubs_count() * NativeInstruction::instruction_size;
-  _test_and_branch_reachable = aarch64_test_and_branch_reachable(offset_code, code_size + trampoline_offset);
-  if (_test_and_branch_reachable) {
-    inc_trampoline_stubs_count();
-  }
-}
 
 int ZLoadBarrierStubC2Aarch64::get_stub_size() {
   PhaseOutput* const output = Compile::current()->output();
@@ -1337,11 +1355,11 @@ Label* ZLoadBarrierStubC2Aarch64::entry() {
 ZStoreBarrierStubC2Aarch64::ZStoreBarrierStubC2Aarch64(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, bool is_nokeepalive)
   : ZStoreBarrierStubC2(node, ref_addr, new_zaddress, new_zpointer, is_native, is_atomic, is_nokeepalive), _deferred_emit(false) {}
 
-ZStoreBarrierStubC2Aarch64* ZStoreBarrierStubC2Aarch64::create(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, bool is_nokeepalive) {
-  ZStoreBarrierStubC2Aarch64* const stub = new (Compile::current()->comp_arena()) ZStoreBarrierStubC2Aarch64(node, ref_addr, new_zaddress, new_zpointer, is_native, is_atomic, is_nokeepalive);
-  register_stub(stub);
-  return stub;
-}
+  ZStoreBarrierStubC2Aarch64* ZStoreBarrierStubC2Aarch64::create(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, bool is_nokeepalive) {
+    ZStoreBarrierStubC2Aarch64* const stub = new (Compile::current()->comp_arena()) ZStoreBarrierStubC2Aarch64(node, ref_addr, new_zaddress, new_zpointer, is_native, is_atomic, is_nokeepalive);
+    register_stub(stub);
+    return stub;
+  }
 
 void ZStoreBarrierStubC2Aarch64::emit_code(MacroAssembler& masm) {
   if (_deferred_emit) {

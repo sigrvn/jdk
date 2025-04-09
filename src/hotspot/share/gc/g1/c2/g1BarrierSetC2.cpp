@@ -238,7 +238,7 @@ static void refine_barrier_by_new_val_type(const Node* n) {
   assert(newval != nullptr, "");
   const Type* newval_bottom = newval->bottom_type();
   TypePtr::PTR newval_type = newval_bottom->make_ptr()->ptr();
-  BarrierData barrier_data = store->barrier_data();
+  uint8_t barrier_data = store->barrier_data();
   if (!newval_bottom->isa_oopptr() &&
       !newval_bottom->isa_narrowoop() &&
       newval_type != TypePtr::Null) {
@@ -294,7 +294,7 @@ uint G1BarrierSetC2::estimated_barrier_size(const Node* node) const {
   //   static void write(MyObject obj1, Object o) {
   //     obj1.o1 = o;
   //   }
-  BarrierData barrier_data = MemNode::barrier_data(node);
+  uint8_t barrier_data = MemNode::barrier_data(node);
   uint nodes = 0;
   if ((barrier_data & G1C2BarrierPre) != 0) {
     nodes += 50;

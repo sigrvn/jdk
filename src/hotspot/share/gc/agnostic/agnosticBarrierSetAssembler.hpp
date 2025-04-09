@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,24 +19,14 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
+ *
  */
 
-#ifndef SHARE_GC_Z_ZBARRIERSETASSEMBLER_HPP
-#define SHARE_GC_Z_ZBARRIERSETASSEMBLER_HPP
+#ifndef SHARE_GC_AGNOSTIC_AGNOSTICBARRIERSETASSEMBLER_HPP
+#define SHARE_GC_AGNOSTIC_AGNOSTICBARRIERSETASSEMBLER_HPP
 
-#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "utilities/macros.hpp"
 
-class ZBarrierSetAssemblerBase : public AgnosticBarrierSetAssembler {
-public:
-  static Address load_bad_mask_from_thread(Register thread);
-  static Address mark_bad_mask_from_thread(Register thread);
+#include CPU_HEADER(gc/agnostic/agnosticBarrierSetAssembler)
 
-  static Address load_bad_mask_from_jni_env(Register env);
-  static Address mark_bad_mask_from_jni_env(Register env);
-};
-
-// Needs to be included after definition of ZBarrierSetAssemblerBase
-#include CPU_HEADER(gc/z/zBarrierSetAssembler)
-
-#endif // SHARE_GC_Z_ZBARRIERSETASSEMBLER_HPP
+#endif // SHARE_GC_AGNOSTIC_AGNOSTICBARRIERSETASSEMBLER_HPP

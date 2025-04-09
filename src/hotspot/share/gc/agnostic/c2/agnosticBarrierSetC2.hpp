@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025 Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,13 +28,60 @@
 #include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/z/c2/zBarrierSetC2.hpp"
 
+const uint8_t AgnosticBarrierIsInitialized = 1;
+const uint8_t AgnosticBarrierInHeap        = 2;
+
+class AgnosticBarrierStubC2 : public BarrierStubC2 {
+public:
+  static bool needs_store_barrier(const MachNode* node);
+
+  AgnosticBarrierStubC2(const MachNode* node);
+  virtual void emit_code(MacroAssembler& masm) = 0;
+};
+
+class AgnosticStoreBarrierStubC2 : public AgnosticBarrierStubC2 {
+private:
+  Register _src;  // g1:new_val,  z:rnew_zpointer
+  Register _dst;  // g1:obj,      z:ref_addr
+  Register _aux;  // g1:pre_val,  z:rnew_zaddress
+  Register _tmp1; // g1:tmp1,     z:rtmp
+  Register _tmp2; // g1:tmp2
+
+  bool _is_initialized;
+  bool _in_heap;
+  bool _is_atomic;
+  bool _is_nokeepalive;
+
+protected:
+  AgnosticStoreBarrierStubC2(const MachNode* node, bool is_initialized, bool in_heap, bool is_atomic, bool is_nokeepalive);
+
+public:
+  static AgnosticStoreBarrierStubC2* create(const MachNode* node, bool is_initialized, bool in_heap, bool is_atomic, bool is_nokeepalive);
+  void initialize_registers(Register src,
+                            Register dst,
+                            Register aux,
+                            Register tmp1,
+                            Register tmp2);
+
+  Register src() const;
+  Register dst() const;
+  Register pre_val() const;
+  Register new_zaddress() const;
+  Register tmp1() const;
+  Register tmp2() const;
+
+  bool is_initialized() const;
+  bool in_heap() const;
+  bool is_atomic() const;
+  bool is_nokeepalive() const;
+
+  virtual void emit_code(MacroAssembler& masm);
+};
+
 // AgnosticBarrierSetC2 is an experimental universal barrier for all supported GC barriers for C2.
 // This specialized barrier set is generated using the -XX:+UseAgnosticBarriers feature flag.
 class AgnosticBarrierSetC2 : public ZBarrierSetC2 {
 protected:
-  // Important properties to consider for stores:
-  // 1. Uninitialized oop or initialized oop (if initialized we should use SATB, if not we don’t)
-  // 2. In heap or not in heap (if in the heap we need to do remset maintenance, otherwise we don’t)
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
 
 public:

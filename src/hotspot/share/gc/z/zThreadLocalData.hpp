@@ -84,6 +84,7 @@ public:
 
   static void set_store_bad_mask(Thread* thread, uintptr_t mask) {
     data(thread)->_store_bad_mask = mask;
+    thread->set_gc_agnostic_data(mask);
   }
 
   static void set_load_good_mask(Thread* thread, uintptr_t mask) {

@@ -95,6 +95,10 @@ public:
 
   void load_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type,
                Register dst, Address src, Register tmp1, Register tmp2);
+
+  void patch_barrier_relocation(address addr, int format);
+
+  void patch_barriers() {}
 };
 
 #endif // CPU_AARCH64_GC_G1_G1BARRIERSETASSEMBLER_AARCH64_HPP

@@ -24,7 +24,6 @@
 #ifndef SHARE_GC_Z_C2_ZBARRIERSETC2_HPP
 #define SHARE_GC_Z_C2_ZBARRIERSETC2_HPP
 
-#include "gc/shared/barrierData.hpp"
 #include "gc/shared/c2/barrierSetC2.hpp"
 #include "memory/allocation.hpp"
 #include "opto/node.hpp"
@@ -34,6 +33,13 @@ class Block;
 class MachNode;
 
 class MacroAssembler;
+
+const uint8_t ZBarrierStrong          =  1;
+const uint8_t ZBarrierWeak            =  2;
+const uint8_t ZBarrierPhantom         =  4;
+const uint8_t ZBarrierNoKeepalive     =  8;
+const uint8_t ZBarrierNative          = 16;
+const uint8_t ZBarrierElided          = 32;
 
 class ZBarrierStubC2 : public BarrierStubC2 {
 protected:

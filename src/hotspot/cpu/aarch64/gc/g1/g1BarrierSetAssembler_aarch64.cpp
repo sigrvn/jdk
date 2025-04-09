@@ -22,6 +22,7 @@
  *
  */
 
+#include "gc/g1/g1OopClosures.hpp"
 #include "precompiled.hpp"
 #include "asm/macroAssembler.inline.hpp"
 #include "gc/g1/g1BarrierSet.hpp"

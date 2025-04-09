@@ -22,6 +22,7 @@
  */
 
 #include "precompiled.hpp"
+#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "gc/z/zBarrierSet.hpp"
 #include "gc/z/zBarrierSetAssembler.hpp"
 #include "gc/z/zBarrierSetNMethod.hpp"

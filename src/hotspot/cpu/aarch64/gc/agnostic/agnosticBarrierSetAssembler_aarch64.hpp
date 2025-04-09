@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,24 +19,30 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
+ *
  */
 
-#ifndef SHARE_GC_Z_ZBARRIERSETASSEMBLER_HPP
-#define SHARE_GC_Z_ZBARRIERSETASSEMBLER_HPP
+#include "gc/shared/barrierSetAssembler.hpp"
+#ifdef COMPILER2
+#include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
+#endif
 
-#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
-#include "utilities/macros.hpp"
+const int AgnosticBarrierRelocationFormatAddrOffsetSlowBeforeLdr      = 4;
+const int AgnosticBarrierRelocationFormatAddrOffsetSlowIndexBeforeLdr = 5;
+const int AgnosticBarrierRelocationFormatPointerBumpScaleBeforeSub    = 6;
+const int AgnosticBarrierRelocationFormatPointerBumpOffsetBeforeStr   = 7;
+const int AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr     = 8;
 
-class ZBarrierSetAssemblerBase : public AgnosticBarrierSetAssembler {
-public:
-  static Address load_bad_mask_from_thread(Register thread);
-  static Address mark_bad_mask_from_thread(Register thread);
-
-  static Address load_bad_mask_from_jni_env(Register env);
-  static Address mark_bad_mask_from_jni_env(Register env);
+class AgnosticBarrierSetAssembler : public BarrierSetAssembler {
+  public:
+#ifdef COMPILER2
+    void generate_store_barrier_stub(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) const;
+    void store_barrier(MacroAssembler* masm,
+        Register src,
+        Register dst,
+        Register aux,
+        Register tmp1,
+        Register tmp2,
+        AgnosticStoreBarrierStubC2* stub) const;
+#endif
 };
-
-// Needs to be included after definition of ZBarrierSetAssemblerBase
-#include CPU_HEADER(gc/z/zBarrierSetAssembler)
-
-#endif // SHARE_GC_Z_ZBARRIERSETASSEMBLER_HPP

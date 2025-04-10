@@ -83,25 +83,24 @@ void G1BarrierSet::swap_global_card_table() {
       SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
 
       while (buffer->is_empty() == false) {
-        //printf("pasa1\n");
         AgnosticStoreBarrierEntry* entry = buffer->pop();
         oopDesc* pre_val = entry->_prev;
         oopDesc* ref_addr = entry->_p;
-        if (ref_addr == nullptr) continue;
-        
-        oopDesc* new_val = ref_addr->obj_field_acquire(0);
-        
-        if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
-        
+        assert(ref_addr != nullptr, "must be");
+    
+        //oopDesc* new_val = Atomic::load(ref_addr);
+    
+        if (pre_val != nullptr && queue.is_active()) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+    
         printf("ref addr %p\n", (void*)ref_addr);
         printf("prev val %p\n", (void*)pre_val);
-        if (new_val == nullptr) continue;
-        printf("new val  %p\n", (void*)new_val);
-        if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
+        //if (new_val == nullptr) continue;
+        //printf("new val  %p\n", (void*)new_val);
+        //if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
           CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
           printf("tarjeta  %p\n", (void*)result);
           *result = CardTable::dirty_card_val();
-        }
+        //}
       }
     }
   } closure(true);

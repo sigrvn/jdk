@@ -40,6 +40,8 @@ protected:
 
 public:
   virtual void* create_barrier_state(Arena* comp_arena) const;
+  virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
+  virtual void eliminate_gc_barrier_data(Node* node) const;
 };
 
 class AgnosticBarrierStubC2 : public BarrierStubC2 {

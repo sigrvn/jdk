@@ -40,6 +40,7 @@
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/javaThread.hpp"
 #include "utilities/debug.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 
@@ -52,48 +53,49 @@ void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread, oopDe
     AgnosticStoreBarrierEntry* entry = buffer->pop();
     oopDesc* pre_val = entry->_prev;
     oopDesc* ref_addr = entry->_p;
-    if (ref_addr == nullptr) continue;
+    assert(ref_addr != nullptr, "must be");
 
-    oopDesc* new_val = ref_addr->obj_field_acquire(0);
+    //oopDesc* new_val = Atomic::load(ref_addr);
 
-    if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+    if (pre_val != nullptr && queue.is_active()) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
 
     printf("ref addr %p\n", (void*)ref_addr);
     printf("prev val %p\n", (void*)pre_val);
-    if (new_val == nullptr) continue;
-    printf("new val  %p\n", (void*)new_val);
-    if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
+    //if (new_val == nullptr) continue;
+    //printf("new val  %p\n", (void*)new_val);
+    //if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
       CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
       printf("tarjeta  %p\n", (void*)result);
       *result = CardTable::dirty_card_val();
-    }
+    //}
   }
 
-  oopDesc* new_val = n;
+  //oopDesc* new_val = n;
+  //oopDesc* pre_val = Atomic::load(oop);
   oopDesc* pre_val = oop->obj_field_acquire(0);
 
-  if (pre_val != nullptr) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+  if (pre_val != nullptr && queue.is_active()) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
 
   printf("ref addr %p\n", (void*)oop);
   printf("prev val %p\n", (void*)pre_val);
-  if (new_val == nullptr) return;
-  printf("new_val  %p\n", (void*)new_val);
-  if (!G1HeapRegion::is_in_same_region(oop, new_val)) {
+  //if (new_val == nullptr) return;
+  //printf("new_val  %p\n", (void*)new_val);
+  //if (!G1HeapRegion::is_in_same_region(oop, new_val)) {
     CardTable::CardValue* result = &table[uintptr_t(oop) >> CardTable::card_shift()];
     printf("tarjeta  %p\n", (void*)result);
     *result = CardTable::dirty_card_val();
-  }
+  //}
 }
 
 void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread, oopDesc* n) {
   CardTable::CardValue* table;
   if (Universe::heap()->kind() == CollectedHeap::Serial) {
     table = SerialHeap::heap()->rem_set()->byte_map_base();
-    assert((uint64_t)((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base()==(uint64_t)table, "lolky");
   } else {
     assert(Universe::heap()->kind() == CollectedHeap::Parallel, "must be");
     table = ParallelScavengeHeap::heap()->card_table()->byte_map_base();
   }
+  assert((uint64_t)((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base()==(uint64_t)table, "lolky");
   
   AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
 
@@ -101,30 +103,29 @@ void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread, oopDe
     AgnosticStoreBarrierEntry* entry = buffer->pop();
     oopDesc* pre_val = entry->_prev;
     oopDesc* ref_addr = entry->_p;
-    if (ref_addr == nullptr) continue;
+    assert(ref_addr != nullptr, "must be");
 
-    oopDesc* new_val = ref_addr->obj_field_acquire(0);
+    //oopDesc* new_val = ref_addr->obj_field_acquire(0);
 
     printf("ref addr %p\n", (void*)ref_addr);
     printf("prev val %p\n", (void*)pre_val);
-    if (new_val == nullptr) continue;
-    printf("new val  %p\n", (void*)new_val);
+    //if (new_val == nullptr) continue;
+    //printf("new val  %p\n", (void*)new_val);
     CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
     printf("tarjeta  %p\n", (void*)result);
     *result = CardTable::dirty_card_val();
   }
 
-  oopDesc* new_val = n;
-
+  //oopDesc* new_val = n;
+  #ifdef ASSERT
   if (Universe::is_in_heap(oop) == false) {
-    printf("me muero");
-  } else {
-    ;
+    assert(false, "me muero");
   }
+  #endif
 
   printf("ref addr %p\n", (void*)oop);
-  if (new_val == nullptr) return;
-  printf("new_val  %p\n", (void*)new_val);
+  //if (new_val == nullptr) return;
+  //printf("new_val  %p\n", (void*)new_val);
   CardTable::CardValue* result = &table[uintptr_t(oop) >> CardTable::card_shift()];
   printf("tarjeta  %p\n", (void*)result);
   *result = CardTable::dirty_card_val();
@@ -149,7 +150,7 @@ JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p, oopDesc* n))
     g1_slow_path(p, thread, n);
     break;
   case CollectedHeap::Z:
-    z_slow_path(p, thread);
+    //z_slow_path(p, thread);
     break;
   case CollectedHeap::Shenandoah:
     ShouldNotReachHere();

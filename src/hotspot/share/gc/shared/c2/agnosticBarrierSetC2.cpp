@@ -111,6 +111,20 @@ void* AgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
   return new (comp_arena) AgnosticBarrierSetC2State(comp_arena);
 }
 
+void AgnosticBarrierSetC2::eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
+  eliminate_gc_barrier_data(node);
+}
+
+void AgnosticBarrierSetC2::eliminate_gc_barrier_data(Node* node) const {
+  if (node->is_LoadStore()) {
+    LoadStoreNode* loadstore = node->as_LoadStore();
+    loadstore->set_barrier_data(0);
+  } else if (node->is_Mem()) {
+    MemNode* mem = node->as_Mem();
+    mem->set_barrier_data(0);
+  }
+}
+
 static AgnosticBarrierSetC2State* barrier_set_state() {
   return reinterpret_cast<AgnosticBarrierSetC2State*>(Compile::current()->barrier_set_state());
 }

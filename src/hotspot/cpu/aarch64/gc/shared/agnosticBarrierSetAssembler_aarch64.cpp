@@ -68,7 +68,7 @@ static void buffer_store(MacroAssembler* masm,
 
   __ ldr(tmp1, buffer);
 
-  // Combined pointer bump and check if the buffer is disabled or full
+  // Check if the buffer is disabled or full
   __ ldr(tmp2, Address(tmp1, AgnosticStoreBarrierBuffer::current_offset()));
   __ cmp(tmp2, (uint8_t)0);
   __ br(Assembler::EQ, slow_path);
@@ -82,12 +82,12 @@ static void buffer_store(MacroAssembler* masm,
   __ add(tmp2, tmp2, tmp1);
 
   // Compute and log the store address
-  __ lea(tmp1, ref_addr);
-  __ str(tmp1, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::p_offset())));
+  //__ lea(tmp1, ref_addr);
+  __ str(ref_addr.base(), Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::p_offset())));
 
   // Load and log the prev value
   __ load_heap_oop(tmp1, ref_addr, noreg, noreg, AS_RAW);
-  //__ ldr(tmp1, tmp1);
+  //__ ldr(tmp1, ref_addr);
   __ str(tmp1, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::prev_offset())));
 }
 

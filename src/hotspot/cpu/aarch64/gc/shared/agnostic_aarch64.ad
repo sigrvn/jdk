@@ -68,6 +68,52 @@ static void async_barrier(MacroAssembler* masm,
 
 // This pattern is generated automatically from g1_aarch64.m4.
 // DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
+instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+%{
+  predicate(GCASB && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  match(Set mem (StoreP mem src));
+  effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
+  ins_cost(INSN_COST);
+  format %{ "str  $src, $mem\t# ptr" %}
+  ins_encode %{
+    const Address ref_addr = Address($mem$$Register);
+    async_barrier(masm, this,
+                  ref_addr /* obj */,
+                  $tmp1$$Register /* pre_val */,
+                  $src$$Register /* new_val */,
+                  $tmp2$$Register /* tmp1 */,
+                  $tmp3$$Register /* tmp2 */,
+                  RegSet::of($mem$$Register, $src$$Register) /* preserve */);
+    __ str($src$$Register, $mem$$Register);
+  %}
+  ins_pipe(istore_reg_mem);
+%}
+
+// This pattern is generated automatically from g1_aarch64.m4.
+// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
+instruct agnosticStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, rFlagsReg cr)
+%{
+  predicate(GCASB && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  match(Set mem (StoreP mem src));
+  effect(TEMP tmp1, TEMP tmp2, TEMP tmp3, KILL cr);
+  ins_cost(VOLATILE_REF_COST);
+  format %{ "stlr  $src, $mem\t# ptr" %}
+  ins_encode %{
+    const Address ref_addr = Address($mem$$Register);
+    async_barrier(masm, this,
+                  ref_addr /* obj */,
+                  $tmp1$$Register /* pre_val */,
+                  $src$$Register /* new_val */,
+                  $tmp2$$Register /* tmp1 */,
+                  $tmp3$$Register /* tmp2 */,
+                  RegSet::of($mem$$Register, $src$$Register) /* preserve */);
+    __ stlr($src$$Register, $mem$$Register);
+  %}
+  ins_pipe(pipe_class_memory);
+%}
+
+// This pattern is generated automatically from g1_aarch64.m4.
+// DO NOT EDIT ANYTHING IN THIS SECTION OF THE FILE
 instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2, iRegPNoSp tmp3, iRegPNoSp tmp4, rFlagsReg cr)
 %{
   predicate(GCASB && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);

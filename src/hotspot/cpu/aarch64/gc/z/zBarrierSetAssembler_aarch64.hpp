@@ -52,6 +52,7 @@ const int ZBarrierRelocationFormatLoadGoodBeforeTbX  = 0;
 const int ZBarrierRelocationFormatMarkBadBeforeMov   = 1;
 const int ZBarrierRelocationFormatStoreGoodBeforeMov = 2;
 const int ZBarrierRelocationFormatStoreBadBeforeMov  = 3;
+const int AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr = 4;
 
 class ZBarrierSetAssembler : public ZBarrierSetAssemblerBase {
 public:

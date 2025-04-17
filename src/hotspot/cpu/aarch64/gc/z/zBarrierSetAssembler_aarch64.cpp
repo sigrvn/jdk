@@ -851,6 +851,9 @@ static uint16_t patch_barrier_relocation_value(int format) {
   case ZBarrierRelocationFormatStoreBadBeforeMov:
     return (uint16_t)ZPointerStoreBadMask;
 
+  case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
+    return (uint16_t)ZPointerLoadShift;
+
   default:
     ShouldNotReachHere();
     return 0;
@@ -868,6 +871,9 @@ void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
   uint32_t* const patch_addr = (uint32_t*)addr;
 
   switch (format) {
+  case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
+    change_immediate(*patch_addr, value, 10, 15);
+    break;
   case ZBarrierRelocationFormatLoadGoodBeforeTbX:
     change_immediate(*patch_addr, value, 19, 23);
     break;

@@ -42,9 +42,14 @@ static void async_barrier(MacroAssembler* masm,
                           Register tmp2,
                           RegSet preserve = RegSet(),
                           RegSet no_preserve = RegSet()) {
-  /*if (!G1PreBarrierStubC2::needs_barrier(node)) {
+  if (node->barrier_data() != AgnosticBarrier) {
+    __ block_comment("Elision");
+    __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
+    __ movzw(tmp1, barrier_Relocation::unpatched);
+    __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
+    __ orr(tmp1, tmp1, new_val, Assembler::LSL, (uint8_t)0);
     return;
-  }*/
+  }
   Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
   AgnosticBarrierSetAssembler* agn_asm = static_cast<AgnosticBarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
   AgnosticStoreBarrierStubC2* const stub = AgnosticStoreBarrierStubC2::create(node, obj, pre_val, tmp1, false, false, new_val);
@@ -55,6 +60,7 @@ static void async_barrier(MacroAssembler* masm,
     stub->dont_preserve(*reg);
   }
   agn_asm->agnostic_store_barrier_c2(masm, obj, pre_val, new_val, rthread, tmp1, tmp2, stub);
+  __ mov(tmp1, new_val);
 }
 
 %}
@@ -84,7 +90,7 @@ instruct agnosticStoreP(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNoSp tmp2,
                   $tmp2$$Register /* tmp1 */,
                   $tmp3$$Register /* tmp2 */,
                   RegSet::of($mem$$Register, $src$$Register) /* preserve */);
-    __ str($src$$Register, $mem$$Register);
+    __ str($tmp2$$Register, $mem$$Register);
   %}
   ins_pipe(istore_reg_mem);
 %}
@@ -107,7 +113,7 @@ instruct agnosticStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNo
                   $tmp2$$Register /* tmp1 */,
                   $tmp3$$Register /* tmp2 */,
                   RegSet::of($mem$$Register, $src$$Register) /* preserve */);
-    __ stlr($src$$Register, $mem$$Register);
+    __ stlr($tmp2$$Register, $mem$$Register);
   %}
   ins_pipe(pipe_class_memory);
 %}
@@ -122,7 +128,6 @@ instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2,
   ins_cost(INSN_COST);
   format %{ "strw  $src, $mem\t# compressed ptr" %}
   ins_encode %{
-    /*assert_different_registers($tmp1$$Register, $tmp2$$Register, r0, r1, $src$$Register);*/
     const Address ref_addr = Address($mem$$Register);
     __ decode_heap_oop($tmp4$$Register, $src$$Register);
     async_barrier(masm, this,

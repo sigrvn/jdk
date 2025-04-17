@@ -33,8 +33,9 @@
 #include "register_aarch64.hpp"
 
 const int AgnosticBarrier = 1;  // Async agnostic barriers are always pre
+const int AgnosticElided  = 2;
 
-class AgnosticBarrierSetC2: public CardTableBarrierSetC2 {
+class AgnosticBarrierSetC2: public G1BarrierSetC2 {
 protected:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
 

@@ -98,13 +98,17 @@ Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& v
   bool use_precise = is_array || anonymous;
   bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
 
-  if (!access.is_oop() || tightly_coupled_alloc || (!in_heap && !anonymous)) {
+  if (!access.is_oop() || (!in_heap && !anonymous)) {
     return BarrierSetC2::store_at_resolved(access, val);
   }
-  access.set_barrier_data(G1C2BarrierPre | G1C2BarrierPost);
-  Node* store = BarrierSetC2::store_at_resolved(access, val);
 
-  return store;
+  if (tightly_coupled_alloc) {
+    access.set_barrier_data(AgnosticElided);
+  } else {
+    access.set_barrier_data(AgnosticBarrier);
+  }
+
+  return BarrierSetC2::store_at_resolved(access, val);
 }
 
 void* AgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
@@ -118,10 +122,10 @@ void AgnosticBarrierSetC2::eliminate_gc_barrier(PhaseMacroExpand* macro, Node* n
 void AgnosticBarrierSetC2::eliminate_gc_barrier_data(Node* node) const {
   if (node->is_LoadStore()) {
     LoadStoreNode* loadstore = node->as_LoadStore();
-    loadstore->set_barrier_data(0);
+    loadstore->set_barrier_data(AgnosticElided);
   } else if (node->is_Mem()) {
     MemNode* mem = node->as_Mem();
-    mem->set_barrier_data(0);
+    mem->set_barrier_data(AgnosticElided);
   }
 }
 

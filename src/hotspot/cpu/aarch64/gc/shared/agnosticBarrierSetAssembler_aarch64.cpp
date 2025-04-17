@@ -35,7 +35,7 @@
 #include "gc/g1/g1HeapRegion.hpp"
 #include "gc/g1/g1ThreadLocalData.hpp"
 #include "gc/shared/collectedHeap.hpp"
-//#include "gc/z/zBarrierSetAssembler_aarch64.hpp"
+#include "gc/z/zBarrierSetAssembler.hpp"
 #include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "interpreter/interp_masm.hpp"
 #include "oops/accessDecorators.hpp"
@@ -106,6 +106,11 @@ void AgnosticBarrierSetAssembler::agnostic_store_barrier_c2(MacroAssembler *masm
   __ b(*stub->entry());
   
   __ bind(*stub->continuation());
+
+  __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
+  __ movzw(tmp1, barrier_Relocation::unpatched);
+  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
+  __ orr(tmp1, tmp1, new_val, Assembler::LSL, (uint8_t)0);
 }
 
 void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) const {

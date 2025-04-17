@@ -60,7 +60,6 @@ static void async_barrier(MacroAssembler* masm,
     stub->dont_preserve(*reg);
   }
   agn_asm->agnostic_store_barrier_c2(masm, obj, pre_val, new_val, rthread, tmp1, tmp2, stub);
-  __ mov(tmp1, new_val);
 }
 
 %}
@@ -136,7 +135,7 @@ instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2,
                   $tmp4$$Register /* new_val */,
                   $tmp2$$Register /* tmp1 */,
                   $tmp3$$Register /* tmp2 */,
-                  RegSet::of($mem$$Register, $src$$Register) /* preserve */);
+                  RegSet::of($mem$$Register, $src$$Register, $tmp4$$Register) /* preserve */);
     __ strw($src$$Register, $mem$$Register);
   %}
   ins_pipe(istore_reg_mem);
@@ -160,7 +159,7 @@ instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNo
                   $tmp4$$Register /* new_val */,
                   $tmp2$$Register /* tmp1 */,
                   $tmp3$$Register /* tmp2 */,
-                  RegSet::of($mem$$Register, $src$$Register) /* preserve */);
+                  RegSet::of($mem$$Register, $src$$Register, $tmp4$$Register) /* preserve */);
     __ stlrw($src$$Register, $mem$$Register);
   %}
   ins_pipe(pipe_class_memory);

@@ -30,6 +30,8 @@
 #include "gc/shared/agnosticStoreBarrierBuffer.hpp"
 #include "gc/shared/agnosticThreadLocalData.hpp"
 #include "gc/shared/cardTable.hpp"
+#include "gc/z/c2/zBarrierSetC2.hpp"
+#include "gc/z/zStoreBarrierBuffer.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "oops/compressedOops.hpp"
@@ -132,6 +134,22 @@ void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread, oopDe
 }
 
 void AgnosticBarrierSetRuntime::z_slow_path(oopDesc* oop, Thread* thread) {
+  AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+  ZStoreBarrierBuffer* zbuffer = ZStoreBarrierBuffer::buffer_for_store(false);
+  assert(zbuffer != nullptr, "must be");
+
+  while (buffer->is_empty() == false) {
+    AgnosticStoreBarrierEntry* entry = buffer->pop();
+    oopDesc* pre_val = entry->_prev;
+    oopDesc* ref_addr = entry->_p;
+    assert(ref_addr != nullptr, "must be");
+
+    if (ZPointer::is_store_bad(static_cast<zpointer>((uintptr_t)pre_val))) {
+      zbuffer->add((zpointer *)ref_addr, static_cast<zpointer>((uintptr_t)pre_val));
+    }
+  }
+  
+  ZBarrier::store_barrier_on_heap_oop_field((zpointer *)oop, false);
 }
 
 JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p, oopDesc* n))
@@ -150,7 +168,7 @@ JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p, oopDesc* n))
     g1_slow_path(p, thread, n);
     break;
   case CollectedHeap::Z:
-    //z_slow_path(p, thread);
+    z_slow_path(p, thread);
     break;
   case CollectedHeap::Shenandoah:
     ShouldNotReachHere();

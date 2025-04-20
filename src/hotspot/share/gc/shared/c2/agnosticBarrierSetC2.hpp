@@ -35,7 +35,7 @@
 const int AgnosticBarrier = 1;  // Async agnostic barriers are always pre
 const int AgnosticElided  = 2;
 
-class AgnosticBarrierSetC2: public G1BarrierSetC2 {
+class AgnosticBarrierSetC2: public ZBarrierSetC2 {
 protected:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
 
@@ -44,6 +44,7 @@ public:
   virtual void emit_stubs(CodeBuffer& cb) const;
   virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
   virtual void eliminate_gc_barrier_data(Node* node) const;
+  virtual void late_barrier_analysis() const;
 };
 
 class AgnosticBarrierStubC2 : public BarrierStubC2 {

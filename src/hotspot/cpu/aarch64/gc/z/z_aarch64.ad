@@ -149,7 +149,7 @@ instruct zLoadPVolatile(iRegPNoSp dst, indirect mem /* sync_memory */, rFlagsReg
 // Store Pointer
 instruct zStoreP(memory mem, iRegP src, iRegPNoSp tmp, rFlagsReg cr)
 %{
-  predicate(UseZGC && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(!GCASB && UseZGC && !needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreP mem src));
   effect(TEMP tmp, KILL cr);
 
@@ -166,7 +166,7 @@ instruct zStoreP(memory mem, iRegP src, iRegPNoSp tmp, rFlagsReg cr)
 // Store Pointer Volatile
 instruct zStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp, rFlagsReg cr)
 %{
-  predicate(UseZGC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
+  predicate(!GCASB && UseZGC && needs_releasing_store(n) && n->as_Store()->barrier_data() != 0);
   match(Set mem (StoreP mem src));
   effect(TEMP tmp, KILL cr);
 

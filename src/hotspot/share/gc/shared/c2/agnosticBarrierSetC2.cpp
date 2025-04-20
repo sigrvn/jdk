@@ -26,6 +26,7 @@
 #include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/shared/agnosticBarrierSetAssembler.hpp"
 #include "gc/shared/c2/modRefBarrierSetC2.hpp"
+#include "gc/z/c2/zBarrierSetC2.hpp"
 #include "opto/output.hpp"
 #include <cstdio>
 
@@ -109,6 +110,10 @@ Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& v
   }
 
   return BarrierSetC2::store_at_resolved(access, val);
+}
+
+void AgnosticBarrierSetC2::late_barrier_analysis() const {
+  compute_liveness_at_stubs();
 }
 
 void* AgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {

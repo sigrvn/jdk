@@ -21,6 +21,8 @@
  * questions.
  */
 
+#include "gc/shared/agnosticStoreBarrierBuffer.hpp"
+#include "gc/shared/agnosticThreadLocalData.hpp"
 #include "precompiled.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
@@ -1026,6 +1028,17 @@ void ZMark::flush_and_free() {
 
 bool ZMark::flush_and_free(Thread* thread) {
   if (thread->is_Java_thread()) {
+    AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+    while (buffer->is_empty() == false) {
+      AgnosticStoreBarrierEntry* entry = buffer->pop();
+      oopDesc* pre_val = entry->_prev;
+      oopDesc* ref_addr = entry->_p;
+      assert(ref_addr != nullptr, "must be");
+
+      if (ZPointer::is_store_bad(static_cast<zpointer>((uintptr_t)pre_val))) {
+        ZThreadLocalData::store_barrier_buffer(thread)->add((zpointer *)ref_addr, static_cast<zpointer>((uintptr_t)pre_val));
+      }
+    }
     ZThreadLocalData::store_barrier_buffer(thread)->flush();
   }
   ZMarkThreadLocalStacks* const stacks = ZThreadLocalData::mark_stacks(thread, _generation->id());

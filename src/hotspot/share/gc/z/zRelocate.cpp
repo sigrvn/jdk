@@ -1022,6 +1022,17 @@ public:
   virtual void do_thread(Thread* thread) {
     JavaThread* const jt = JavaThread::cast(thread);
     ZStoreBarrierBuffer* buffer = ZThreadLocalData::store_barrier_buffer(jt);
+    AgnosticStoreBarrierBuffer* agnosticbuffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+    while (agnosticbuffer->is_empty() == false) {
+      AgnosticStoreBarrierEntry* entry = agnosticbuffer->pop();
+      oopDesc* pre_val = entry->_prev;
+      oopDesc* ref_addr = entry->_p;
+      assert(ref_addr != nullptr, "must be");
+
+      if (ZPointer::is_store_bad(static_cast<zpointer>((uintptr_t)pre_val))) {
+        buffer->add((zpointer *)ref_addr, static_cast<zpointer>((uintptr_t)pre_val));
+      }
+    }
     buffer->install_base_pointers();
   }
 };

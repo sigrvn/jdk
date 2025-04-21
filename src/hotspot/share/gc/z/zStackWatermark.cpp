@@ -198,6 +198,17 @@ void ZStackWatermark::start_processing_impl(void* context) {
   }
 
   // Prepare store barrier buffer for new GC phase
+  AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(_jt);
+  while (buffer->is_empty() == false) {
+    AgnosticStoreBarrierEntry* entry = buffer->pop();
+    oopDesc* pre_val = entry->_prev;
+    oopDesc* ref_addr = entry->_p;
+    assert(ref_addr != nullptr, "must be");
+
+    if (ZPointer::is_store_bad(static_cast<zpointer>((uintptr_t)pre_val))) {
+      ZThreadLocalData::store_barrier_buffer(_jt)->add((zpointer *)ref_addr, static_cast<zpointer>((uintptr_t)pre_val));
+    }
+  }
   ZThreadLocalData::store_barrier_buffer(_jt)->on_new_phase();
 
   // Publishes the processing start to concurrent threads

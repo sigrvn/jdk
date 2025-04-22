@@ -56,19 +56,17 @@
 
 #define __ masm->
 
-static void buffer_store(MacroAssembler* masm,
-                         Address ref_addr,
-                         Register tmp1,
-                         Register tmp2,
-                         Label& slow_path) {
-  Address buffer(rthread, AgnosticThreadLocalData::agnostic_store_barrier_buffer_offset());
+static void buffer_store(MacroAssembler* masm, Address ref_addr, Register tmp1, Register tmp2, Label& slow_path) {
   assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2);
+ 
+  Address buffer(rthread, AgnosticThreadLocalData::agnostic_store_barrier_buffer_offset());
 
-  __ block_comment("Buffering badger");
+  __ block_comment("START buffer_store");
 
+  // tmp1 <- agnostic buffer address
   __ ldr(tmp1, buffer);
 
-  // Check if the buffer is disabled or full
+  // Check if the buffer is full. ANTODO: compare and branch optimization
   __ ldr(tmp2, Address(tmp1, AgnosticStoreBarrierBuffer::current_offset()));
   __ cmp(tmp2, (uint8_t)0);
   __ br(Assembler::EQ, slow_path);
@@ -82,39 +80,41 @@ static void buffer_store(MacroAssembler* masm,
   __ add(tmp2, tmp2, tmp1);
 
   // Compute and log the store address
-  //__ lea(tmp1, ref_addr);
   __ str(ref_addr.base(), Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::p_offset())));
 
   // Load and log the prev value
   __ load_heap_oop(tmp1, ref_addr, noreg, noreg, AS_RAW);
-  //__ ldr(tmp1, ref_addr);
   __ str(tmp1, Address(tmp2, in_bytes(AgnosticStoreBarrierEntry::prev_offset())));
+
+  __ block_comment("END buffer_store");
 }
 
 void AgnosticBarrierSetAssembler::agnostic_store_barrier_c2(MacroAssembler *masm, Address obj, Register pre_val, Register new_val,
                                                             Register thread, Register tmp1, Register tmp2, AgnosticStoreBarrierStubC2 *stub) {
   assert(thread == rthread, "must be");
   assert_different_registers(pre_val, new_val, tmp1, tmp2);
-  assert(pre_val != noreg && tmp1 != noreg && tmp2 != noreg,
-         "expecting a register");
+  assert(pre_val != noreg && tmp1 != noreg && tmp2 != noreg, "expecting a register");
 
-  //stub->initialize_registers(obj, pre_val, thread, tmp1, tmp2);
+  __ block_comment("START inline barrier");
 
-  __ block_comment("Antón es trilisto");
-  // If we are storing NULL, there is nothing to be done; otherwise jump to slow path
-  //__ cbnzw(pre_val, *stub->entry());
+  // Unconditionally buffer stores. Jump to stub where that happens
   __ b(*stub->entry());
   
   __ bind(*stub->continuation());
 
+  // Agnosticly color the pointer. ANTODO: move this to AD file
   __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
   __ movzw(tmp1, barrier_Relocation::unpatched);
   __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
   __ orr(tmp1, tmp1, new_val, Assembler::LSL, (uint8_t)0);
+
+  __ block_comment("END inline barrier");
 }
 
 void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) const {
   Assembler::InlineSkippedInstructionsCounter skipped_counter(masm);
+
+  __ block_comment("START agnostic stub");
 
   // Stub entry
   __ bind(*stub->entry());
@@ -158,35 +158,37 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
   {
     SaveLiveRegisters save_live_registers(masm, stub);
 
-    // Paranoia: we're sure c_rarg0, c_rarg1 and c_rarg2 are different, but they
-    // may be n or ref_addr.base() or ref_addr.index().
-    // Solution:
-    if (c_rarg0 != n) {
-      // If we write into c_rarg0 first we don't lose n
-      __ lea(c_rarg0, ref_addr);
-      // Now write n into c_rarg1. We may be overwritting ref_addr fields but we don't care
-      __ mov(c_rarg1, n);
-    } else {
-      // c_rarg0 is n. We need to put n into c_rarg1. But c_rarg1 may be a field of ref_addr
-      if (c_rarg1 != ref_addr.base() && c_rarg1 != ref_addr.index()) {
-        // Okay, it is not. So we can put n into there without overwritting things
-        __ mov(c_rarg1, n);
-        // By definition of things, ref_addr fields cannot be in c_rarg0 (as it is n)
-        __ lea(c_rarg0, ref_addr);
-        // Sanity check:
-        assert_different_registers(c_rarg1, c_rarg0, ref_addr.base(), ref_addr.index());
-      } else {
-        // Now, one of the ref_addr fields is in c_rarg1. And also n == c_rarg0, so we can put
-        // the address into rscratch1 (rscratch1 != c_rarg0 != c_rarg1)
-        __ lea(rscratch1, ref_addr);
-        // ref_addr is "saved" into rscratch1, so we can move n (c_rarg0) into c_rarg1
-        __ mov(c_rarg1, n);
-        // And bring back the address into c_rarg0
-        __ mov(c_rarg0, rscratch1);
-        // Sanity check:
-        assert_different_registers(c_rarg0, c_rarg1, rscratch1);
-      }
-    }
+    // // Paranoia: we're sure c_rarg0, c_rarg1 and c_rarg2 are different, but they
+    // // may be n or ref_addr.base() or ref_addr.index().
+    // // Solution:
+    // if (c_rarg0 != n) {
+    //   // If we write into c_rarg0 first we don't lose n
+    //   __ lea(c_rarg0, ref_addr);
+    //   // Now write n into c_rarg1. We may be overwritting ref_addr fields but we don't care
+    //   __ mov(c_rarg1, n);
+    // } else {
+    //   // c_rarg0 is n. We need to put n into c_rarg1. But c_rarg1 may be a field of ref_addr
+    //   if (c_rarg1 != ref_addr.base() && c_rarg1 != ref_addr.index()) {
+    //     // Okay, it is not. So we can put n into there without overwritting things
+    //     __ mov(c_rarg1, n);
+    //     // By definition of things, ref_addr fields cannot be in c_rarg0 (as it is n)
+    //     __ lea(c_rarg0, ref_addr);
+    //     // Sanity check:
+    //     assert_different_registers(c_rarg1, c_rarg0, ref_addr.base(), ref_addr.index());
+    //   } else {
+    //     // Now, one of the ref_addr fields is in c_rarg1. And also n == c_rarg0, so we can put
+    //     // the address into rscratch1 (rscratch1 != c_rarg0 != c_rarg1)
+    //     __ lea(rscratch1, ref_addr);
+    //     // ref_addr is "saved" into rscratch1, so we can move n (c_rarg0) into c_rarg1
+    //     __ mov(c_rarg1, n);
+    //     // And bring back the address into c_rarg0
+    //     __ mov(c_rarg0, rscratch1);
+    //     // Sanity check:
+    //     assert_different_registers(c_rarg0, c_rarg1, rscratch1);
+    //   }
+    // }
+
+    __ lea(c_rarg0, ref_addr);
 
     __ lea(rscratch1, RuntimeAddress(AgnosticBarrierSetRuntime::buffer_full_addr()));
     __ blr(rscratch1);

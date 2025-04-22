@@ -46,7 +46,7 @@
 #include <cstdint>
 #include <cstdio>
 
-void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread, oopDesc* n) {
+void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread) {
   SATBMarkQueue& queue = G1ThreadLocalData::satb_mark_queue(thread);
   CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(thread);
   AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
@@ -89,7 +89,7 @@ void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread, oopDe
   //}
 }
 
-void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread, oopDesc* n) {
+void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread) {
   CardTable::CardValue* table;
   if (Universe::heap()->kind() == CollectedHeap::Serial) {
     table = SerialHeap::heap()->rem_set()->byte_map_base();
@@ -152,7 +152,7 @@ void AgnosticBarrierSetRuntime::z_slow_path(oopDesc* oop, Thread* thread) {
   ZBarrier::store_barrier_on_heap_oop_field((zpointer *)oop, false);
 }
 
-JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p, oopDesc* n))
+JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p))
   // Buffer is full, let's deal with its contents
   Thread* thread = Thread::current();
   assert(thread->is_Java_thread(), "needs to");
@@ -162,10 +162,10 @@ JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p, oopDesc* n))
     break;
   case CollectedHeap::Serial:
   case CollectedHeap::Parallel:
-    ct_slow_path(p, thread, n);
+    ct_slow_path(p, thread);
     break;
   case CollectedHeap::G1:
-    g1_slow_path(p, thread, n);
+    g1_slow_path(p, thread);
     break;
   case CollectedHeap::Z:
     z_slow_path(p, thread);

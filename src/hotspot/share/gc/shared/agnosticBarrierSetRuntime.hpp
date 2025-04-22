@@ -35,9 +35,9 @@
 
 class AgnosticBarrierSetRuntime : public AllStatic {
 private:
-  static void buffer_full(oopDesc* p, oopDesc* n);
-  static void g1_slow_path(oopDesc* oop, Thread* thread, oopDesc* n);
-  static void ct_slow_path(oopDesc* oop, Thread* thread, oopDesc* n);
+  static void buffer_full(oopDesc* p);
+  static void g1_slow_path(oopDesc* oop, Thread* thread);
+  static void ct_slow_path(oopDesc* oop, Thread* thread);
   static void z_slow_path(oopDesc* oop, Thread* thread);
 public:
   static address buffer_full_addr();

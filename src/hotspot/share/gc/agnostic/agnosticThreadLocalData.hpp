@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -19,25 +19,34 @@
  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
  * or visit www.oracle.com if you need additional information or have any
  * questions.
- *
  */
 
-#ifndef CPU_AARCH64_GC_SHARED_CARDTABLEBARRIERSETASSEMBLER_AARCH64_HPP
-#define CPU_AARCH64_GC_SHARED_CARDTABLEBARRIERSETASSEMBLER_AARCH64_HPP
+#ifndef SHARE_GC_AGNOSTIC_AGNOSTICTHREADLOCALDATA_HPP
+#define SHARE_GC_AGNOSTIC_AGNOSTICTHREADLOCALDATA_HPP
 
-#include "asm/macroAssembler.hpp"
-#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
-#include "gc/shared/modRefBarrierSetAssembler.hpp"
+#include "runtime/javaThread.hpp"
+#include "utilities/debug.hpp"
+#include "utilities/sizes.hpp"
 
-class CardTableBarrierSetAssembler : public ModRefBarrierSetAssembler {
+class AgnosticThreadLocalData {
 protected:
-  void store_check(MacroAssembler* masm, Register obj, Address dst);
+  // Compiler support
+  uintptr_t _satb_condition = 0;
 
-  virtual void gen_write_ref_array_post_barrier(MacroAssembler* masm, DecoratorSet decorators,
-                                                Register start, Register count, Register tmp, RegSet saved_regs);
-  virtual void oop_store_at(MacroAssembler* masm, DecoratorSet decorators, BasicType type,
-                            Address dst, Register val, Register tmp1, Register tmp2, Register tmp3);
+  AgnosticThreadLocalData() : _satb_condition(0) {}
 
+  static AgnosticThreadLocalData* data(Thread* thread) {
+    return thread->gc_data<AgnosticThreadLocalData>();
+  }
+
+public:
+  static void set_satb_condition(Thread* thread, uintptr_t satb_condition) {
+    data(thread)->_satb_condition = satb_condition;
+  }
+
+  static ByteSize satb_condition_offset() {
+    return Thread::gc_data_offset() + byte_offset_of(AgnosticThreadLocalData, _satb_condition);
+  }
 };
 
-#endif // CPU_AARCH64_GC_SHARED_CARDTABLEBARRIERSETASSEMBLER_AARCH64_HPP
+#endif // SHARE_GC_AGNOSTIC_AGNOSTICTHREADLOCALDATA_HPP

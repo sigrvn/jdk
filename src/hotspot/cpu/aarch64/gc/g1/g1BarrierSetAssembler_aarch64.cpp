@@ -139,7 +139,6 @@ static void generate_queue_test_and_insertion(MacroAssembler* masm, ByteSize ind
 static void generate_pre_barrier_fast_path(MacroAssembler* masm,
                                            const Register thread,
                                            const Register tmp1) {
-  __ block_comment("! generate_pre_barrier_fast_path START");
   Address in_progress(thread, in_bytes(G1ThreadLocalData::satb_mark_queue_active_offset()));
   // Is marking active?
   if (in_bytes(SATBMarkQueue::byte_width_of_active()) == 4) {
@@ -148,7 +147,6 @@ static void generate_pre_barrier_fast_path(MacroAssembler* masm,
     assert(in_bytes(SATBMarkQueue::byte_width_of_active()) == 1, "Assumption");
     __ ldrb(tmp1, in_progress);
   }
-  __ block_comment("! generate_pre_barrier_fast_path END");
 }
 
 static void generate_pre_barrier_slow_path(MacroAssembler* masm,

@@ -231,7 +231,6 @@ static void store_barrier_buffer_add(MacroAssembler* masm,
     Register tmp1,
     Register tmp2,
     Label& slow_path) {
-  __ block_comment("! store_barrier_buffer_add START");
   Address buffer(rthread, ZThreadLocalData::store_barrier_buffer_offset());
   assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2);
 
@@ -241,6 +240,7 @@ static void store_barrier_buffer_add(MacroAssembler* masm,
   __ ldr(tmp2, Address(tmp1, ZStoreBarrierBuffer::current_offset()));
   __ cmp(tmp2, (uint8_t)0);
   __ br(Assembler::EQ, slow_path);
+  // __ cbz(tmp2, slow_path); ??
 
   // Bump the pointer
   __ sub(tmp2, tmp2, sizeof(ZStoreBarrierEntry));
@@ -257,7 +257,6 @@ static void store_barrier_buffer_add(MacroAssembler* masm,
   // Load and log the prev value
   __ ldr(tmp1, tmp1);
   __ str(tmp1, Address(tmp2, in_bytes(ZStoreBarrierEntry::prev_offset())));
-  __ block_comment("! store_barrier_buffer_add END");
 }
 
 void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
@@ -270,7 +269,6 @@ void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
     Label& medium_path_continuation,
     Label& slow_path,
     Label& slow_path_continuation) const {
-  __ block_comment("! store_barrier_medium START");
   assert_different_registers(ref_addr.base(), ref_addr.index(), rtmp1, rtmp2);
 
   // The reason to end up in the medium path is that the pre-value was not 'good'.
@@ -310,7 +308,6 @@ void ZBarrierSetAssembler::store_barrier_medium(MacroAssembler* masm,
     __ bind(slow_path_continuation);
     __ b(medium_path_continuation);
   }
-  __ block_comment("! store_barrier_medium END");
 }
 
 void ZBarrierSetAssembler::store_at(MacroAssembler* masm,
@@ -858,18 +855,17 @@ static void change_immediate(uint32_t& instr, uint32_t imm, uint32_t start, uint
 
 static uint16_t patch_barrier_relocation_value(int format) {
   switch (format) {
-    case AgnosticBarrierRelocationFormatPointerBumpScaleBeforeSub:
+    case AgnosticBarrierRelocationFormatSATBBaseAddressBeforeAdd:
+      return (uint16_t)ZThreadLocalData::store_barrier_buffer_offset();
+
+    case AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd:
+      return (uint16_t)ZStoreBarrierBuffer::buffer_offset();
+
+    case AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeMov:
+      return (uint16_t)ZStoreBarrierBuffer::current_offset();
+
+    case AgnosticBarrierRelocationFormatPointerBumpScaleBeforeMov:
       return (uint16_t)sizeof(ZStoreBarrierEntry);
-
-    case AgnosticBarrierRelocationFormatAddrOffsetSlowBeforeLdr:
-      return (uint16_t)(ZThreadLocalData::store_barrier_buffer_offset()) >> 3;
-
-    case AgnosticBarrierRelocationFormatAddrOffsetSlowIndexBeforeLdr:
-      return (uint16_t)(ZStoreBarrierBuffer::current_offset()) >> 3;
-
-    case AgnosticBarrierRelocationFormatPointerBumpOffsetBeforeStr:
-      return ((uint16_t)ZThreadLocalData::store_barrier_buffer_offset()
-          + (uint16_t)ZStoreBarrierBuffer::current_offset()) >> 3;
 
     case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
       return (uint16_t)ZPointerLoadShift;
@@ -896,10 +892,8 @@ void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
   uint32_t* const patch_addr = (uint32_t*)addr;
 
   switch (format) {
-    case AgnosticBarrierRelocationFormatAddrOffsetSlowBeforeLdr:
-    case AgnosticBarrierRelocationFormatAddrOffsetSlowIndexBeforeLdr:
-    case AgnosticBarrierRelocationFormatPointerBumpOffsetBeforeStr:
-    case AgnosticBarrierRelocationFormatPointerBumpScaleBeforeSub:
+    case AgnosticBarrierRelocationFormatSATBBaseAddressBeforeAdd:
+    case AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd:
       change_immediate(*patch_addr, value, 10, 21);
       break;
 
@@ -911,6 +905,8 @@ void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
       change_immediate(*patch_addr, value, 19, 23);
       break;
 
+    case AgnosticBarrierRelocationFormatPointerBumpScaleBeforeMov:
+    case AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeMov:
     case ZBarrierRelocationFormatStoreGoodBeforeMov:
     case ZBarrierRelocationFormatMarkBadBeforeMov:
     case ZBarrierRelocationFormatStoreBadBeforeMov:
@@ -1222,7 +1218,6 @@ void ZBarrierSetAssembler::generate_c2_store_barrier_stub(MacroAssembler* masm, 
 
   __ bind(slow);
 
-  __ block_comment("! store_barrier_slow START");
   {
     SaveLiveRegisters save_live_registers(masm, stub);
     __ lea(c_rarg0, stub->ref_addr());
@@ -1238,7 +1233,6 @@ void ZBarrierSetAssembler::generate_c2_store_barrier_stub(MacroAssembler* masm, 
     }
     __ blr(rscratch1);
   }
-  __ block_comment("! store_barrier_slow END");
 
   // Stub exit
   __ b(slow_continuation);

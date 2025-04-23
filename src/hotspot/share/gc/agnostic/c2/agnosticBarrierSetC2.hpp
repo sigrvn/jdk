@@ -25,21 +25,13 @@
 #ifndef SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
 #define SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
 
-#include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/z/c2/zBarrierSetC2.hpp"
 
-const uint8_t AgnosticBarrierIsInitialized = 1;
-const uint8_t AgnosticBarrierInHeap        = 2;
+const uint8_t AgnosticBarrierRequired    = 1;
+const uint8_t AgnosticBarrierNokeepalive = 2;
+const uint8_t AgnosticBarrierElided      = 4;
 
-class AgnosticBarrierStubC2 : public BarrierStubC2 {
-public:
-  static bool needs_store_barrier(const MachNode* node);
-
-  AgnosticBarrierStubC2(const MachNode* node);
-  virtual void emit_code(MacroAssembler& masm) = 0;
-};
-
-class AgnosticStoreBarrierStubC2 : public AgnosticBarrierStubC2 {
+class AgnosticStoreBarrierStubC2 : public BarrierStubC2 {
 private:
   Register _src;  // g1:new_val,  z:rnew_zpointer
   Register _dst;  // g1:obj,      z:ref_addr
@@ -47,16 +39,14 @@ private:
   Register _tmp1; // g1:tmp1,     z:rtmp
   Register _tmp2; // g1:tmp2
 
-  bool _is_initialized;
-  bool _in_heap;
   bool _is_atomic;
   bool _is_nokeepalive;
 
 protected:
-  AgnosticStoreBarrierStubC2(const MachNode* node, bool is_initialized, bool in_heap, bool is_atomic, bool is_nokeepalive);
+  AgnosticStoreBarrierStubC2(const MachNode* node, bool is_atomic, bool is_nokeepalive);
 
 public:
-  static AgnosticStoreBarrierStubC2* create(const MachNode* node, bool is_initialized, bool in_heap, bool is_atomic, bool is_nokeepalive);
+  static AgnosticStoreBarrierStubC2* create(const MachNode* node, bool is_atomic, bool is_nokeepalive);
   void initialize_registers(Register src,
                             Register dst,
                             Register aux,
@@ -65,13 +55,10 @@ public:
 
   Register src() const;
   Register dst() const;
-  Register pre_val() const;
-  Register new_zaddress() const;
+  Register aux() const;
   Register tmp1() const;
   Register tmp2() const;
 
-  bool is_initialized() const;
-  bool in_heap() const;
   bool is_atomic() const;
   bool is_nokeepalive() const;
 
@@ -87,6 +74,9 @@ protected:
 public:
   virtual void* create_barrier_state(Arena* comp_arena) const;
   virtual void emit_stubs(CodeBuffer& cb) const;
+  virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
+  virtual void eliminate_gc_barrier_data(Node* node) const;
+  virtual void late_barrier_analysis() const;
 };
 
 #endif // SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP

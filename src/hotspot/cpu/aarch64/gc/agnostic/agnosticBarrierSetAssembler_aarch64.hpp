@@ -27,22 +27,24 @@
 #include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
 #endif
 
-const int AgnosticBarrierRelocationFormatAddrOffsetSlowBeforeLdr      = 4;
-const int AgnosticBarrierRelocationFormatAddrOffsetSlowIndexBeforeLdr = 5;
-const int AgnosticBarrierRelocationFormatPointerBumpScaleBeforeSub    = 6;
-const int AgnosticBarrierRelocationFormatPointerBumpOffsetBeforeStr   = 7;
-const int AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr     = 8;
+const int AgnosticBarrierRelocationFormatPointerBumpScaleBeforeMov = 4;
+const int AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr = 5;
+const int AgnosticBarrierRelocationFormatBufferEntryPointerOffsetBeforeStr = 6;
+const int AgnosticBarrierRelocationFormatBufferEntryValueOffsetBeforeStr = 7;
+const int AgnosticBarrierRelocationFormatSATBBaseAddressBeforeAdd  = 8;
+const int AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeMov  = 9;
+const int AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd = 10;
 
 class AgnosticBarrierSetAssembler : public BarrierSetAssembler {
-  public:
+public:
 #ifdef COMPILER2
-    void generate_store_barrier_stub(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) const;
-    void store_barrier(MacroAssembler* masm,
-        Register src,
-        Register dst,
-        Register aux,
-        Register tmp1,
-        Register tmp2,
-        AgnosticStoreBarrierStubC2* stub) const;
+  void generate_store_barrier_stub_c2(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) const;
+  void agnostic_store_barrier(MacroAssembler* masm,
+      Register src,
+      Register dst,
+      Register aux,
+      Register tmp1,
+      Register tmp2,
+      AgnosticStoreBarrierStubC2* stub) const;
 #endif
 };

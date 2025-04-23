@@ -24,6 +24,7 @@
 #ifndef SHARE_GC_Z_ZTHREADLOCALDATA_HPP
 #define SHARE_GC_Z_ZTHREADLOCALDATA_HPP
 
+#include "gc/agnostic/agnosticThreadLocalData.hpp"
 #include "gc/z/zAddress.hpp"
 #include "gc/z/zGenerationId.hpp"
 #include "gc/z/zMarkStack.hpp"
@@ -32,8 +33,9 @@
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
-class ZThreadLocalData {
+class ZThreadLocalData : public AgnosticThreadLocalData {
 private:
+  ZStoreBarrierBuffer*   _store_barrier_buffer;
   uintptr_t              _load_good_mask;
   uintptr_t              _load_bad_mask;
   uintptr_t              _mark_bad_mask;
@@ -41,19 +43,18 @@ private:
   uintptr_t              _store_bad_mask;
   uintptr_t              _uncolor_mask;
   uintptr_t              _nmethod_disarmed;
-  ZStoreBarrierBuffer*   _store_barrier_buffer;
   ZMarkThreadLocalStacks _mark_stacks[2];
   zaddress_unsafe*       _invisible_root;
 
   ZThreadLocalData()
-    : _load_good_mask(0),
+    : _store_barrier_buffer(new ZStoreBarrierBuffer()),
+      _load_good_mask(0),
       _load_bad_mask(0),
       _mark_bad_mask(0),
       _store_good_mask(0),
       _store_bad_mask(0),
       _uncolor_mask(0),
       _nmethod_disarmed(0),
-      _store_barrier_buffer(new ZStoreBarrierBuffer()),
       _mark_stacks(),
       _invisible_root(nullptr) {}
 
@@ -84,7 +85,7 @@ public:
 
   static void set_store_bad_mask(Thread* thread, uintptr_t mask) {
     data(thread)->_store_bad_mask = mask;
-    thread->set_gc_agnostic_data(mask);
+    data(thread)->_satb_condition = mask; // Used by agnostic store barrier fast path
   }
 
   static void set_load_good_mask(Thread* thread, uintptr_t mask) {

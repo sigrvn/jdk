@@ -24,6 +24,7 @@
 #ifndef SHARE_GC_G1_G1THREADLOCALDATA_HPP
 #define SHARE_GC_G1_G1THREADLOCALDATA_HPP
 
+#include "gc/agnostic/agnosticThreadLocalData.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1CardTable.hpp"
 #include "gc/g1/g1CollectedHeap.hpp"
@@ -34,7 +35,7 @@
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
-class G1ThreadLocalData {
+class G1ThreadLocalData : public AgnosticThreadLocalData {
 private:
   SATBMarkQueue _satb_mark_queue;
   G1CardTable::CardValue* _byte_map_base;
@@ -47,7 +48,9 @@ private:
   G1ThreadLocalData() :
       _satb_mark_queue(&G1BarrierSet::satb_mark_queue_set()),
       _byte_map_base(G1CollectedHeap::heap()->card_table_base()),
-      _pin_cache() { assert(_byte_map_base != nullptr, "must be"); }
+      _pin_cache() {
+        assert(_byte_map_base != nullptr, "must be");
+      }
 
   static G1ThreadLocalData* data(Thread* thread) {
     assert(UseG1GC, "Sanity");

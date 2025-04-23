@@ -142,22 +142,12 @@ class Thread: public ThreadShadow {
   // in Thread. The accessors are in JavaThread.
   SafepointMechanism::ThreadData _poll_data;
 
-  uintptr_t _gc_agnostic_data = 0;
-
   // Thread local data area available to the GC. The internal
   // structure and contents of this data area is GC-specific.
   // Only GC and GC barrier code should access this data area.
   GCThreadLocalData _gc_data;
 
  public:
-  void set_gc_agnostic_data(uintptr_t data) {
-    _gc_agnostic_data = data;
-  }
-
-  static ByteSize gc_agnostic_data_offset() {
-    return byte_offset_of(Thread, _gc_agnostic_data);
-  }
-
   static ByteSize gc_data_offset() {
     return byte_offset_of(Thread, _gc_data);
   }

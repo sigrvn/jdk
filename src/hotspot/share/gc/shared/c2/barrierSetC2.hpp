@@ -25,7 +25,6 @@
 #ifndef SHARE_GC_SHARED_C2_BARRIERSETC2_HPP
 #define SHARE_GC_SHARED_C2_BARRIERSETC2_HPP
 
-#include "gc/shared/barrierData.hpp"
 #include "memory/allocation.hpp"
 #include "oops/accessDecorators.hpp"
 #include "opto/loopnode.hpp"

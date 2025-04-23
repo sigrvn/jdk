@@ -40,6 +40,14 @@ protected:
   }
 
 public:
+  static void create(Thread* thread) {
+    new (data(thread)) AgnosticThreadLocalData();
+  }
+
+  static void destroy(Thread* thread) {
+    data(thread)->~AgnosticThreadLocalData();
+  }
+
   static void set_satb_condition(Thread* thread, uintptr_t satb_condition) {
     data(thread)->_satb_condition = satb_condition;
   }

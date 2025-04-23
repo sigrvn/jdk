@@ -25,6 +25,7 @@
 #ifndef SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
 #define SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
 
+#include "gc/shared/c2/cardTableBarrierSetC2.hpp"
 #include "gc/z/c2/zBarrierSetC2.hpp"
 
 const uint8_t AgnosticBarrierRequired    = 1;
@@ -67,7 +68,7 @@ public:
 
 // AgnosticBarrierSetC2 is an experimental universal barrier for all supported GC barriers for C2.
 // This specialized barrier set is generated using the -XX:+UseAgnosticBarriers feature flag.
-class AgnosticBarrierSetC2 : public ZBarrierSetC2 {
+class AgnosticBarrierSetC2 : public CardTableBarrierSetC2 {
 protected:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
 

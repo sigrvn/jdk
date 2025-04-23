@@ -73,6 +73,14 @@ CardTableBarrierSet::CardTableBarrierSet(CardTable* card_table) :
   _card_table(card_table)
 {}
 
+void CardTableBarrierSet::on_thread_create(Thread* thread) {
+  AgnosticThreadLocalData::create(thread);
+}
+
+void CardTableBarrierSet::on_thread_destroy(Thread* thread) {
+  AgnosticThreadLocalData::destroy(thread);
+}
+
 void CardTableBarrierSet::initialize() {
   initialize_deferred_card_mark_barriers();
 }

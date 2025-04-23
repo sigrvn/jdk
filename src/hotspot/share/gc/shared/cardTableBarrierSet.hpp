@@ -70,6 +70,9 @@ public:
     write_region(mr);
   }
 
+  virtual void on_thread_create(Thread* thread);
+  virtual void on_thread_destroy(Thread* thread);
+
  public:
   // Record a reference update. Note that these versions are precise!
   // The scanning code has to handle the fact that the write barrier may be

@@ -138,34 +138,19 @@ static void generate_store_barrier_fast_path(MacroAssembler* masm,
   __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
   __ orr(aux, aux, src, Assembler::LSL, (uint8_t)0);
 
+  // Do card marking if on G1, Serial, or Parallel.
   Label done;
   __ cbnz(tmp2, done);
   __ lsr(tmp1, dst, CardTable::card_shift()); // tmp1 := card address relative to card table base
   __ ldr(tmp2, Address(rthread, in_bytes(CardTableThreadLocalData::byte_map_base_offset()))); // tmp2 := card table base address
   __ add(tmp1, tmp1, tmp2);                   // tmp1 := card address
-  if (UseCondCardMark) {
-    __ ldrb(tmp2, Address(tmp1));             // tmp2 := card
-    // Instead of loading clean_card_val and comparing, we exploit the fact that
-    // the LSB of non-clean cards is always 0, and the LSB of clean cards 1.
-    __ tbz(tmp2, 0, done);
-  }
+  __ ldrb(tmp2, Address(tmp1));             // tmp2 := card
+                                            // Instead of loading clean_card_val and comparing, we exploit the fact that
+                                            // the LSB of non-clean cards is always 0, and the LSB of clean cards 1.
+  __ tbz(tmp2, 0, done);
   static_assert(G1CardTable::dirty_card_val() == 0, "must be to use zr");
   __ strb(zr, Address(tmp1));                            // *(card address) := dirty_card_val
   __ bind(done);
-
-  // Do card marking if on G1, Serial, or Parallel.
-  //Label done;
-  //__ cbnz(tmp2, done);
-  //__ lsr(tmp1, dst, CardTable::card_shift()); // tmp1 := card address relative to card table base
-  //__ load_byte_map_base(tmp2);                // tmp2 := card table base address
-  //__ add(tmp1, tmp1, tmp2);                   // tmp1 := card address
-  //__ ldrb(tmp2, Address(tmp1));               // tmp2 := card
-  //// Instead of loading clean_card_val and comparing, we exploit the fact that
-  //// the LSB of non-clean cards is always 0, and the LSB of clean cards 1.
-  //__ tbz(tmp2, 0, done);
-  //static_assert(CardTable::dirty_card_val() == 0, "must be to use zr");
-  //__ strb(zr, Address(tmp1));                 // *(card address) := dirty_card_val
-  //__ bind(done);
 }
 
 static void generate_store_barrier_medium_path(MacroAssembler* masm,

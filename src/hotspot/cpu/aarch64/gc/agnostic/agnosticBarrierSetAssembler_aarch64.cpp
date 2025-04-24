@@ -24,6 +24,7 @@
 
 #include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "gc/agnostic/agnosticThreadLocalData.hpp"
+#include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
 #include "gc/g1/g1ThreadLocalData.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
 #include "gc/z/zBarrierSetAssembler.hpp"
@@ -89,45 +90,6 @@ static void generate_satb_enqueue(MacroAssembler* masm,
   __ str(pre_val, Address(tmp2));
 }
 
-void generate_store_barrier_medium_path(MacroAssembler* masm,
-    Register dst,
-    Register pre_val,
-    Register tmp1,
-    Register tmp2,
-    bool is_native,
-    bool is_atomic,
-    Label& medium_path_continuation,
-    Label& slow_path,
-    Label& slow_path_continuation) {
-  BLOCK_COMMENT("Agnostic Store Barrier Medium Path");
-  if (is_native) {
-    ShouldNotReachHere();
-  } else if (is_atomic) {
-    ShouldNotReachHere();
-  } else {
-    Label zpre, enqueue;
-    // At this point in G1, pre_val will have the value of the active flag in SATBMarkQueue, which is 1.
-    // Thus, we can use the pre_val register to skip G1 specific operations if we're on ZGC.
-    __ cmp(pre_val, (uint8_t)1);
-    __ br(Assembler::NE, zpre);
-    if (dst != noreg) {
-      __ load_heap_oop(pre_val, Address(dst, 0), noreg, noreg, AS_RAW);
-    }
-    // We don't want to enqueue in G1 if the previous value was null.
-    __ cbz(pre_val, medium_path_continuation);
-    __ b(enqueue);
-
-    // Set pre_val to 0 to branch to ZGC specific code for SATB
-    __ bind(zpre);
-    __ movzw(pre_val, (uint8_t)0);
-
-    __ bind(enqueue);
-    generate_satb_enqueue(masm, dst, pre_val, tmp1, tmp2, slow_path, medium_path_continuation);
-    __ bind(slow_path_continuation);
-    __ b(medium_path_continuation);
-  }
-}
-
 static void generate_store_barrier_fast_path(MacroAssembler* masm,
     Register src,  // g1:new_val,  z:rnew_zaddress (PRESERVE FOR G1)
     Register dst,  // g1:obj,      z:ref_addr (PRESERVE FOR G1)
@@ -135,9 +97,8 @@ static void generate_store_barrier_fast_path(MacroAssembler* masm,
     Register tmp1, // g1:tmp1,     z:rtmp
     Register tmp2, // g1:tmp2
     AgnosticStoreBarrierStubC2* stub) {
+  BLOCK_COMMENT("Agnostic Store Barrier Fast Path");
   const Address ref_addr = Address(dst);
-  // assert_different_registers(src, dst, aux, rthread, tmp1, tmp2, noreg);
-  // assert(aux != noreg && tmp1 != noreg && tmp2 != noreg, "expecting a register");
   assert_different_registers(ref_addr.base(), aux, tmp1);
   assert_different_registers(ref_addr.index(), aux, tmp1);
   assert_different_registers(src, aux, tmp1);
@@ -173,27 +134,111 @@ static void generate_store_barrier_fast_path(MacroAssembler* masm,
   assert_different_registers(src, aux);
   __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
   __ movzw(aux, barrier_Relocation::unpatched);
-  __ lsl(tmp2, aux, 1);
+  __ lsl(tmp2, aux, 1); // Set register to skip card marking if on ZGC
   __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
   __ orr(aux, aux, src, Assembler::LSL, (uint8_t)0);
 
   Label done;
-  __ cbnz(tmp2, done); // Skip if on ZGC
-                       // Storing region crossing non-null, is card young?
+  __ cbnz(tmp2, done);
   __ lsr(tmp1, dst, CardTable::card_shift()); // tmp1 := card address relative to card table base
-  __ load_byte_map_base(tmp2);                // tmp2 := card table base address
+  __ ldr(tmp2, Address(rthread, in_bytes(CardTableThreadLocalData::byte_map_base_offset()))); // tmp2 := card table base address
   __ add(tmp1, tmp1, tmp2);                   // tmp1 := card address
-  __ ldrb(tmp2, Address(tmp1));             // tmp2 := card
-                                            // Instead of loading clean_card_val and comparing, we exploit the fact that
-                                            // the LSB of non-clean cards is always 0, and the LSB of clean cards 1.
-  __ tbz(tmp2, 0, done);
-  static_assert(CardTable::dirty_card_val() == 0, "must be to use zr");
-  __ strb(zr, Address(tmp1));                 // *(card address) := dirty_card_val
+  if (UseCondCardMark) {
+    __ ldrb(tmp2, Address(tmp1));             // tmp2 := card
+    // Instead of loading clean_card_val and comparing, we exploit the fact that
+    // the LSB of non-clean cards is always 0, and the LSB of clean cards 1.
+    __ tbz(tmp2, 0, done);
+  }
+  static_assert(G1CardTable::dirty_card_val() == 0, "must be to use zr");
+  __ strb(zr, Address(tmp1));                            // *(card address) := dirty_card_val
   __ bind(done);
+
+  // Do card marking if on G1, Serial, or Parallel.
+  //Label done;
+  //__ cbnz(tmp2, done);
+  //__ lsr(tmp1, dst, CardTable::card_shift()); // tmp1 := card address relative to card table base
+  //__ load_byte_map_base(tmp2);                // tmp2 := card table base address
+  //__ add(tmp1, tmp1, tmp2);                   // tmp1 := card address
+  //__ ldrb(tmp2, Address(tmp1));               // tmp2 := card
+  //// Instead of loading clean_card_val and comparing, we exploit the fact that
+  //// the LSB of non-clean cards is always 0, and the LSB of clean cards 1.
+  //__ tbz(tmp2, 0, done);
+  //static_assert(CardTable::dirty_card_val() == 0, "must be to use zr");
+  //__ strb(zr, Address(tmp1));                 // *(card address) := dirty_card_val
+  //__ bind(done);
 }
 
-static void generate_runtime_address_load(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) {
+static void generate_store_barrier_medium_path(MacroAssembler* masm,
+    Register dst,
+    Register aux,
+    Register tmp1,
+    Register tmp2,
+    bool is_native,
+    bool is_atomic,
+    Label& medium_path_continuation,
+    Label& slow_path,
+    Label& slow_path_continuation) {
+  BLOCK_COMMENT("Agnostic Store Barrier Medium Path");
+  if (is_native) {
+    ShouldNotReachHere();
+  } else if (is_atomic) {
+    ShouldNotReachHere();
+  } else {
+    Label zpre, enqueue;
+    // At this point in G1, pre_val will have the value of the active flag in SATBMarkQueue, which is 1.
+    // Thus, we can use the pre_val register to skip G1 specific operations if we're on ZGC.
+    __ cmp(aux, (uint8_t)1);
+    __ br(Assembler::NE, zpre);
 
+    // Load the previous value for G1.
+    if (dst != noreg) {
+      __ load_heap_oop(aux, Address(dst, 0), noreg, noreg, AS_RAW);
+    }
+    // We don't want to enqueue if the previous value was null.
+    __ cbz(aux, medium_path_continuation);
+    __ b(enqueue);
+
+    // Set aux to 0 to branch to ZGC specific code for SATB
+    __ bind(zpre);
+    __ movzw(aux, (uint8_t)0);
+
+    __ bind(enqueue);
+    generate_satb_enqueue(masm, dst, aux, tmp1, tmp2, slow_path, medium_path_continuation);
+    __ bind(slow_path_continuation);
+    __ b(medium_path_continuation);
+  }
+}
+
+
+void generate_store_barrier_slow_path(MacroAssembler* masm, Label& slow_continuation, AgnosticStoreBarrierStubC2* stub) {
+  BLOCK_COMMENT("Agnostic Store Barrier Slow Path");
+  SaveLiveRegisters save_live_registers(masm, stub);
+  Label z_runtime;
+  // Conditionally select either the reference address if on ZGC or the previous value if on G1
+  // from previously-set flag in generate_store_barrier_medium_path.
+  __ csel(c_rarg0, stub->dst(), stub->aux(), Assembler::NE);
+  __ br(Assembler::NE, z_runtime);
+
+  BLOCK_COMMENT("G1 Runtime Call");
+  __ lea(c_rarg1, rthread);
+  __ mov(rscratch1, CAST_FROM_FN_PTR(address, G1BarrierSetRuntime::write_ref_field_pre_entry));
+  __ blr(rscratch1);
+
+  // Stub exit
+  __ b(slow_continuation);
+
+  BLOCK_COMMENT("Z Runtime Call");
+  __ bind(z_runtime);
+  if (stub->is_native()) {
+    __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_native_oop_field_without_healing_addr()));
+  } else if (stub->is_atomic()) {
+    __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_oop_field_with_healing_addr()));
+  } else if (stub->is_nokeepalive()) {
+    __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::no_keepalive_store_barrier_on_oop_field_without_healing_addr()));
+  } else {
+    __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_oop_field_without_healing_addr()));
+  }
+  __ blr(rscratch1);
 }
 
 void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) const {
@@ -217,36 +262,7 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
       slow_continuation);
 
   __ bind(slow);
-
-  {
-    SaveLiveRegisters save_live_registers(masm, stub);
-
-    Label z_runtime;
-    // Conditionally load either the reference address if on ZGC or the previous value if on G1 
-    // from previously-set flag in generate_store_barrier_medium_path.
-    __ csel(c_rarg0, stub->dst(), stub->aux(), Assembler::NE);
-    __ br(Assembler::NE, z_runtime);
-
-    BLOCK_COMMENT("G1 Runtime Call");
-    __ lea(c_rarg1, rthread);
-    __ mov(rscratch1, CAST_FROM_FN_PTR(address, G1BarrierSetRuntime::write_ref_field_pre_entry));
-    __ blr(rscratch1);
-
-    __ b(slow_continuation);
-
-    BLOCK_COMMENT("Z Runtime Call");
-    __ bind(z_runtime);
-    if (stub->is_native()) {
-      __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_native_oop_field_without_healing_addr()));
-    } else if (stub->is_atomic()) {
-      __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_oop_field_with_healing_addr()));
-    } else if (stub->is_nokeepalive()) {
-      __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::no_keepalive_store_barrier_on_oop_field_without_healing_addr()));
-    } else {
-      __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_oop_field_without_healing_addr()));
-    }
-    __ blr(rscratch1);
-  }
+  generate_store_barrier_slow_path(masm, slow_continuation, stub);
 
   // Stub exit
   __ b(slow_continuation);

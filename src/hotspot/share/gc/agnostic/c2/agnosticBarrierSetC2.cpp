@@ -98,16 +98,14 @@ Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& v
   bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
   bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
 
-  if (!access.is_oop() || (!in_heap && !anonymous)) {
-    return BarrierSetC2::store_at_resolved(access, val);
+  if (access.is_oop() && (in_heap || anonymous)) {
+    uint8_t barrier_data = tightly_coupled_alloc ? AgnosticBarrierElided : AgnosticBarrierRequired;
+    if (no_keepalive) {
+      barrier_data |= AgnosticBarrierNokeepalive;
+    }
+    access.set_barrier_data(barrier_data);
   }
 
-  uint8_t barrier_data = tightly_coupled_alloc ? AgnosticBarrierElided : AgnosticBarrierRequired;
-  if (no_keepalive) {
-    barrier_data |= AgnosticBarrierNokeepalive;
-  }
-
-  access.set_barrier_data(barrier_data);
   return BarrierSetC2::store_at_resolved(access, val);
 }
 

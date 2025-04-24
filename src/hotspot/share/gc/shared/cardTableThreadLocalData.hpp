@@ -21,40 +21,43 @@
  * questions.
  */
 
-#ifndef SHARE_GC_AGNOSTIC_AGNOSTICTHREADLOCALDATA_HPP
-#define SHARE_GC_AGNOSTIC_AGNOSTICTHREADLOCALDATA_HPP
+#ifndef SHARE_GC_SHARED_CARDTABLETHREADLOCALDATA_HPP
+#define SHARE_GC_SHARED_CARDTABLETHREADLOCALDATA_HPP
 
-#include "runtime/javaThread.hpp"
-#include "utilities/debug.hpp"
-#include "utilities/sizes.hpp"
+#include "gc/agnostic/agnosticThreadLocalData.hpp"
+#include "gc/shared/cardTable.hpp"
 
-class AgnosticThreadLocalData {
+class CardTableThreadLocalData : public AgnosticThreadLocalData {
 protected:
-  // Compiler support
-  uintptr_t _satb_condition;
-  uintptr_t _satb_base_address;
+  CardTable::CardValue* _byte_map_base;
 
-  AgnosticThreadLocalData()
-    : _satb_condition(0),
-      _satb_base_address(0) {}
+  CardTableThreadLocalData() {}
 
-  static AgnosticThreadLocalData* data(Thread* thread) {
-    return thread->gc_data<AgnosticThreadLocalData>();
+  static CardTableThreadLocalData* data(Thread* thread) {
+    return thread->gc_data<CardTableThreadLocalData>();
   }
 
 public:
-  static void set_satb_condition(Thread* thread, uintptr_t satb_condition) {
-    data(thread)->_satb_condition = satb_condition;
+  static void create(Thread* thread) {
+    new (data(thread)) CardTableThreadLocalData();
   }
 
-  static ByteSize satb_condition_offset() {
-    return Thread::gc_data_offset() + byte_offset_of(AgnosticThreadLocalData, _satb_condition);
+  static void destroy(Thread* thread) {
+    data(thread)->~CardTableThreadLocalData();
   }
 
-  static ByteSize satb_base_address_offset() {
-    return Thread::gc_data_offset() + byte_offset_of(AgnosticThreadLocalData, _satb_base_address);
+  static ByteSize byte_map_base_offset() {
+    return Thread::gc_data_offset() + byte_offset_of(CardTableThreadLocalData, _byte_map_base);
   }
 
+  static CardTable::CardValue* byte_map_base(Thread* thread) {
+    return data(thread)->_byte_map_base;
+  }
+
+  static void set_byte_map_base(Thread* thread, CardTable::CardValue* new_byte_map_base) {
+    data(thread)->_byte_map_base = new_byte_map_base;
+  }
 };
 
-#endif // SHARE_GC_AGNOSTIC_AGNOSTICTHREADLOCALDATA_HPP
+#endif //  SHARE_GC_SHARED_CARDTABLETHREADLOCALDATA_HPP
+

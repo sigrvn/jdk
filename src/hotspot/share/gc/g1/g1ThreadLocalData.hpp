@@ -24,21 +24,20 @@
 #ifndef SHARE_GC_G1_G1THREADLOCALDATA_HPP
 #define SHARE_GC_G1_G1THREADLOCALDATA_HPP
 
-#include "gc/agnostic/agnosticThreadLocalData.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1CardTable.hpp"
 #include "gc/g1/g1CollectedHeap.hpp"
 #include "gc/g1/g1RegionPinCache.hpp"
+#include "gc/shared/cardTableThreadLocalData.hpp"
 #include "gc/shared/gc_globals.hpp"
 #include "gc/shared/satbMarkQueue.hpp"
 #include "runtime/javaThread.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
-class G1ThreadLocalData : public AgnosticThreadLocalData {
+class G1ThreadLocalData : public CardTableThreadLocalData {
 private:
   SATBMarkQueue _satb_mark_queue;
-  G1CardTable::CardValue* _byte_map_base;
 
   // Per-thread cache of pinned object count to reduce atomic operation traffic
   // due to region pinning. Holds the last region where the mutator pinned an
@@ -47,10 +46,10 @@ private:
 
   G1ThreadLocalData() :
       _satb_mark_queue(&G1BarrierSet::satb_mark_queue_set()),
-      _byte_map_base(G1CollectedHeap::heap()->card_table_base()),
       _pin_cache() {
-        assert(_byte_map_base != nullptr, "must be");
         _satb_base_address = reinterpret_cast<uintptr_t>(&satb_mark_queue);
+        _byte_map_base = G1CollectedHeap::heap()->card_table_base(); 
+        assert(_byte_map_base != nullptr, "must be");
       }
 
   static G1ThreadLocalData* data(Thread* thread) {
@@ -92,11 +91,11 @@ public:
   }
 
   static G1CardTable::CardValue* byte_map_base(Thread* thread) {
-    return data(thread)->_byte_map_base;
+    return static_cast<G1CardTable::CardValue*>(data(thread)->_byte_map_base);
   }
 
   static void set_byte_map_base(Thread* thread, G1CardTable::CardValue* new_byte_map_base) {
-    data(thread)->_byte_map_base = new_byte_map_base;
+    CardTableThreadLocalData::set_byte_map_base(thread, new_byte_map_base);
   }
 
   static G1RegionPinCache& pin_count_cache(Thread* thread) {

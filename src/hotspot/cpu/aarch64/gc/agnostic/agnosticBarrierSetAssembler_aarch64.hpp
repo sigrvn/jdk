@@ -27,13 +27,10 @@
 #include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
 #endif
 
-const int AgnosticBarrierRelocationFormatPointerBumpScaleBeforeMov = 4;
-const int AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr = 5;
-const int AgnosticBarrierRelocationFormatBufferEntryPointerOffsetBeforeStr = 6;
-const int AgnosticBarrierRelocationFormatBufferEntryValueOffsetBeforeStr = 7;
-const int AgnosticBarrierRelocationFormatSATBBaseAddressBeforeAdd  = 8;
-const int AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeMov  = 9;
-const int AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd = 10;
+const int AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr = 4;
+const int AgnosticBarrierRelocationFormatSATBPointerBumpBeforeSub = 5;
+const int AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd = 6;
+const int AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeLdr = 7;
 
 class AgnosticBarrierSetAssembler : public BarrierSetAssembler {
 public:

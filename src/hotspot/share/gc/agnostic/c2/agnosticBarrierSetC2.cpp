@@ -94,6 +94,7 @@ Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& v
   bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
   bool is_dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
   bool in_heap = (decorators & IN_HEAP) != 0;
+  bool in_native = (decorators & IN_NATIVE) != 0;
   bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
   bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
 
@@ -154,13 +155,14 @@ void AgnosticStoreBarrierStubC2::emit_code(MacroAssembler& masm) {
   bsa->generate_store_barrier_stub_c2(&masm, this);
 }
 
-AgnosticStoreBarrierStubC2::AgnosticStoreBarrierStubC2(const MachNode* node, bool is_atomic, bool is_nokeepalive)
+AgnosticStoreBarrierStubC2::AgnosticStoreBarrierStubC2(const MachNode* node, bool is_atomic, bool is_native, bool is_nokeepalive)
   : BarrierStubC2(node),
   _is_atomic(is_atomic),
+  _is_native(is_native),
   _is_nokeepalive(is_nokeepalive) {}
 
-  AgnosticStoreBarrierStubC2* AgnosticStoreBarrierStubC2::create(const MachNode* node, bool is_atomic, bool is_nokeepalive) {
-    AgnosticStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) AgnosticStoreBarrierStubC2(node, is_atomic, is_nokeepalive);
+  AgnosticStoreBarrierStubC2* AgnosticStoreBarrierStubC2::create(const MachNode* node, bool is_atomic, bool is_native, bool is_nokeepalive) {
+    AgnosticStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) AgnosticStoreBarrierStubC2(node, is_atomic, is_native, is_nokeepalive);
     if (!Compile::current()->output()->in_scratch_emit_size()) {
       barrier_set_state()->stubs()->append(stub);
     }
@@ -186,4 +188,5 @@ Register AgnosticStoreBarrierStubC2::tmp1() const { return _tmp1; }
 Register AgnosticStoreBarrierStubC2::tmp2() const { return _tmp2; }
 
 bool AgnosticStoreBarrierStubC2::is_atomic() const { return _is_atomic; }
+bool AgnosticStoreBarrierStubC2::is_native() const { return _is_native; }
 bool AgnosticStoreBarrierStubC2::is_nokeepalive() const { return _is_nokeepalive; }

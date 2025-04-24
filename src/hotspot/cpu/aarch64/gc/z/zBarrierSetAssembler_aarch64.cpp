@@ -855,16 +855,13 @@ static void change_immediate(uint32_t& instr, uint32_t imm, uint32_t start, uint
 
 static uint16_t patch_barrier_relocation_value(int format) {
   switch (format) {
-    case AgnosticBarrierRelocationFormatSATBBaseAddressBeforeAdd:
-      return (uint16_t)ZThreadLocalData::store_barrier_buffer_offset();
-
     case AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd:
       return (uint16_t)ZStoreBarrierBuffer::buffer_offset();
 
-    case AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeMov:
-      return (uint16_t)ZStoreBarrierBuffer::current_offset();
+    case AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeLdr:
+      return ((uint16_t)ZStoreBarrierBuffer::current_offset()) >> 3;
 
-    case AgnosticBarrierRelocationFormatPointerBumpScaleBeforeMov:
+    case AgnosticBarrierRelocationFormatSATBPointerBumpBeforeSub:
       return (uint16_t)sizeof(ZStoreBarrierEntry);
 
     case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
@@ -892,7 +889,8 @@ void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
   uint32_t* const patch_addr = (uint32_t*)addr;
 
   switch (format) {
-    case AgnosticBarrierRelocationFormatSATBBaseAddressBeforeAdd:
+    case AgnosticBarrierRelocationFormatSATBPointerBumpBeforeSub:
+    case AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeLdr:
     case AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd:
       change_immediate(*patch_addr, value, 10, 21);
       break;
@@ -905,8 +903,6 @@ void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
       change_immediate(*patch_addr, value, 19, 23);
       break;
 
-    case AgnosticBarrierRelocationFormatPointerBumpScaleBeforeMov:
-    case AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeMov:
     case ZBarrierRelocationFormatStoreGoodBeforeMov:
     case ZBarrierRelocationFormatMarkBadBeforeMov:
     case ZBarrierRelocationFormatStoreBadBeforeMov:

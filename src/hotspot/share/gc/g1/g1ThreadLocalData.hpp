@@ -50,6 +50,7 @@ private:
       _byte_map_base(G1CollectedHeap::heap()->card_table_base()),
       _pin_cache() {
         assert(_byte_map_base != nullptr, "must be");
+        _satb_base_address = reinterpret_cast<uintptr_t>(&satb_mark_queue);
       }
 
   static G1ThreadLocalData* data(Thread* thread) {

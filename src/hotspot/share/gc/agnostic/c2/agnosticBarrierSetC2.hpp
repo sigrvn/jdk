@@ -25,12 +25,14 @@
 #ifndef SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
 #define SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP
 
+#include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/shared/c2/cardTableBarrierSetC2.hpp"
 #include "gc/z/c2/zBarrierSetC2.hpp"
 
 const uint8_t AgnosticBarrierRequired    = 1;
 const uint8_t AgnosticBarrierNokeepalive = 2;
-const uint8_t AgnosticBarrierElided      = 4;
+const uint8_t AgnosticBarrierNative      = 4;
+const uint8_t AgnosticBarrierElided      = 8;
 
 class AgnosticStoreBarrierStubC2 : public BarrierStubC2 {
 private:
@@ -40,14 +42,15 @@ private:
   Register _tmp1; // g1:tmp1,     z:rtmp
   Register _tmp2; // g1:tmp2
 
-  bool _is_atomic;
-  bool _is_nokeepalive;
+  const bool _is_atomic;
+  const bool _is_native;
+  const bool _is_nokeepalive;
 
 protected:
-  AgnosticStoreBarrierStubC2(const MachNode* node, bool is_atomic, bool is_nokeepalive);
+  AgnosticStoreBarrierStubC2(const MachNode* node, bool is_atomic, bool is_native, bool is_nokeepalive);
 
 public:
-  static AgnosticStoreBarrierStubC2* create(const MachNode* node, bool is_atomic, bool is_nokeepalive);
+  static AgnosticStoreBarrierStubC2* create(const MachNode* node, bool is_atomic, bool is_native, bool is_nokeepalive);
   void initialize_registers(Register src,
                             Register dst,
                             Register aux,
@@ -61,6 +64,7 @@ public:
   Register tmp2() const;
 
   bool is_atomic() const;
+  bool is_native() const;
   bool is_nokeepalive() const;
 
   virtual void emit_code(MacroAssembler& masm);
@@ -68,7 +72,7 @@ public:
 
 // AgnosticBarrierSetC2 is an experimental universal barrier for all supported GC barriers for C2.
 // This specialized barrier set is generated using the -XX:+UseAgnosticBarriers feature flag.
-class AgnosticBarrierSetC2 : public CardTableBarrierSetC2 {
+class AgnosticBarrierSetC2 : public ZBarrierSetC2 {
 protected:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
 

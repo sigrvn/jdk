@@ -56,7 +56,9 @@ private:
       _uncolor_mask(0),
       _nmethod_disarmed(0),
       _mark_stacks(),
-      _invisible_root(nullptr) {}
+      _invisible_root(nullptr) {
+        _satb_base_address = reinterpret_cast<uintptr_t>(_store_barrier_buffer);
+      }
 
   ~ZThreadLocalData() {
     delete _store_barrier_buffer;

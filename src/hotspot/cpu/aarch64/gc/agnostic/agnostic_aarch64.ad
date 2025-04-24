@@ -45,6 +45,7 @@ static void agnostic_store_barrier(MacroAssembler* masm, const MachNode* node,
   Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
 
   if (node->barrier_data() == AgnosticBarrierElided) {
+    assert_different_registers(src, aux);
     __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
     __ movzw(aux, barrier_Relocation::unpatched);
     __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
@@ -52,9 +53,10 @@ static void agnostic_store_barrier(MacroAssembler* masm, const MachNode* node,
     return;
   }
 
-  bool is_nokeepalive = (node->barrier_data() & ZBarrierNoKeepalive) != 0;
+  bool is_native = (node->barrier_data() & AgnosticBarrierNative) != 0;
+  bool is_nokeepalive = (node->barrier_data() & AgnosticBarrierNokeepalive) != 0;
 
-  AgnosticStoreBarrierStubC2* const stub = AgnosticStoreBarrierStubC2::create(node, is_atomic, is_nokeepalive);
+  AgnosticStoreBarrierStubC2* const stub = AgnosticStoreBarrierStubC2::create(node, is_atomic, is_native, is_nokeepalive);
   for (RegSetIterator<Register> reg = preserve.begin(); *reg != noreg; ++reg) {
     stub->preserve(*reg);
   }
@@ -101,7 +103,6 @@ instruct agnosticStorePVolatile(indirect mem, iRegP src, iRegPNoSp tmp1, iRegPNo
   format %{ "stlr  $src, $mem\t# ptr" %}
   ins_encode %{
     __ block_comment("=== agnosticStorePVolatile START ===");
-    const Address ref_addr = Address($mem$$Register);
     agnostic_store_barrier(masm, this,
                       $src$$Register    /* g1:new_val, z:rnew_zaddress  */,
                       $mem$$Register    /* g1:obj,     z:ref_addr       */,

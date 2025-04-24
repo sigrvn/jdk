@@ -31,9 +31,12 @@
 class AgnosticThreadLocalData {
 protected:
   // Compiler support
-  uintptr_t _satb_condition = 0;
+  uintptr_t _satb_condition;
+  uintptr_t _satb_base_address;
 
-  AgnosticThreadLocalData() : _satb_condition(0) {}
+  AgnosticThreadLocalData()
+    : _satb_condition(0),
+      _satb_base_address(0) {}
 
   static AgnosticThreadLocalData* data(Thread* thread) {
     return thread->gc_data<AgnosticThreadLocalData>();
@@ -55,6 +58,11 @@ public:
   static ByteSize satb_condition_offset() {
     return Thread::gc_data_offset() + byte_offset_of(AgnosticThreadLocalData, _satb_condition);
   }
+
+  static ByteSize satb_base_address_offset() {
+    return Thread::gc_data_offset() + byte_offset_of(AgnosticThreadLocalData, _satb_base_address);
+  }
+
 };
 
 #endif // SHARE_GC_AGNOSTIC_AGNOSTICTHREADLOCALDATA_HPP

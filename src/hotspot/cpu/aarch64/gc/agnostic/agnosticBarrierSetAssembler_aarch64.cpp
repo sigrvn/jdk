@@ -45,90 +45,53 @@
 // Generate patchable code stub for inserting into either G1's mark queue or ZGC's store buffer.
 static void generate_satb_enqueue(MacroAssembler* masm,
     const Address ref_addr,
+    const Register pre_val,
     const Register tmp1,
     const Register tmp2,
     Label& slow_path,
     Label& continuation) {
   BLOCK_COMMENT("SATB Insertion");
 
-  Address buffer(rthread, ZThreadLocalData::store_barrier_buffer_offset());
-  assert_different_registers(ref_addr.base(), ref_addr.index(), tmp1, tmp2);
-
-  __ ldr(tmp1, buffer);
+  // Load the base address for the SATB structure.
+  __ ldr(tmp1, Address(rthread, AgnosticThreadLocalData::satb_base_address_offset()));
 
   // Combined pointer bump and check if the buffer is disabled or full
-  __ ldr(tmp2, Address(tmp1, ZStoreBarrierBuffer::current_offset()));
+  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeLdr);
+  __ ldr(tmp2, Address(tmp1, in_bytes(SATBMarkQueue::byte_offset_of_index()))); // ZGC: patch to ZStoreBarrierBuffer::current_offset()
   __ cbz(tmp2, slow_path);
 
   // Bump the pointer
-  __ sub(tmp2, tmp2, sizeof(ZStoreBarrierEntry));
-  __ str(tmp2, Address(tmp1, ZStoreBarrierBuffer::current_offset()));
+  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSATBPointerBumpBeforeSub);
+  __ sub(tmp2, tmp2, wordSize); // ZGC: patch to sizeof(ZStoreBarrierEntry)
+  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeLdr);
+  __ str(tmp2, Address(tmp1, in_bytes(SATBMarkQueue::byte_offset_of_index())));
 
   // Compute the buffer entry address
-  __ lea(tmp2, Address(tmp2, ZStoreBarrierBuffer::buffer_offset()));
+  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd);
+  __ add(tmp2, tmp2, in_bytes(SATBMarkQueue::byte_offset_of_buf())); // ZGC: patch to ZStoreBarrierBuffer::buffer_offset()
   __ add(tmp2, tmp2, tmp1);
+
+  // In G1, the previous value has already been loaded and can be inserted into the address in tmp2.
+  // In ZGC, we must load the previous value and log both it and the store address.
+  Label skip_load;
+  __ cbnz(pre_val, skip_load);
 
   // Compute and log the store address
   __ lea(tmp1, ref_addr);
   __ str(tmp1, Address(tmp2, in_bytes(ZStoreBarrierEntry::p_offset())));
 
   // Load and log the prev value
-  __ ldr(tmp1, tmp1);
+  __ ldr(tmp1, ref_addr);
   __ str(tmp1, Address(tmp2, in_bytes(ZStoreBarrierEntry::prev_offset())));
-
-  /*
-     Label skip, skip2;
-  // Calculate base address
-  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSATBBaseAddressBeforeAdd);
-  __ add(tmp1, rthread, in_bytes(Thread::gc_data_offset())); // tmp1 := thread-local GC data address
-
-  // ZGC: Patch wordSize to be sizeof(ZStoreBarrierEntry)
-  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatPointerBumpScaleBeforeMov);
-  __ movzw(rscratch1, wordSize); // rscratch1 := buffer entry size
-  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeMov);
-  __ movzw(rscratch2, in_bytes(G1ThreadLocalData::satb_mark_queue_index_offset())); // rscratch2 := buffer index offset
-  __ cmpw(rscratch1, wordSize);
-  __ br(Assembler::EQ, skip);
-
-  // Load base address (ZGC only)
-  __ ldr(tmp1, tmp1); // tmp1 := *(ZStoreBarrierBuffer)
-
-  // Combined pointer bump and check if the buffer is disabled or full
-  __ bind(skip);
-
-  __ ldr(tmp2, Address(tmp1, rscratch2)); // tmp2 := current index
-  __ cbz(tmp2, slow_path);
-
-  // Bump the pointer
-  __ sub(tmp2, tmp2, rscratch1); // tmp2 := next index
-  __ str(tmp2, Address(tmp1, rscratch2)); // current index := next index
-
-  // Compute the buffer entry address
-  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd);
-  __ add(tmp2, tmp2, in_bytes(G1ThreadLocalData::satb_mark_queue_buffer_offset())); // tmp2 := buffer address
-  __ add(tmp2, tmp2, tmp1); // tmp2 := buffer address + next index
-
-  // Compute the store address
-  __ lea(tmp1, ref_addr); // tmp1 := store address
-  __ br(Assembler::EQ, skip2); // Skip to G1 log
-                               // Log store address (ZGC only)
-                               __ str(tmp1, Address(tmp2, ZStoreBarrierEntry::p_offset())); // *(buffer entry + pointer field) := store address
-
-  // Load and log the prev value (ZGC)
-  __ ldr(tmp1, tmp1); // tmp1 := *(store address)
-  __ str(tmp1, Address(tmp2, ZStoreBarrierEntry::prev_offset())); // *(buffer entry + prev_val field) := *(store address)
   __ b(continuation);
 
-  // Load and log the prev value (G1)
-  __ bind(skip2);
-  __ ldr(tmp1, tmp1); // tmp1 := *(store address)
-  __ cbz(tmp1, continuation); // Is the previous value null?
-  __ str(tmp1, Address(tmp2, 0)); // *(buffer address + next index) := *(store address)
-  */
+  __ bind(skip_load);
+  __ str(pre_val, Address(tmp2));
 }
 
 void generate_store_barrier_medium_path(MacroAssembler* masm,
-    Address ref_addr,
+    Register dst,
+    Register pre_val,
     Register tmp1,
     Register tmp2,
     bool is_native,
@@ -136,12 +99,30 @@ void generate_store_barrier_medium_path(MacroAssembler* masm,
     Label& medium_path_continuation,
     Label& slow_path,
     Label& slow_path_continuation) {
+  BLOCK_COMMENT("Agnostic Store Barrier Medium Path");
   if (is_native) {
     ShouldNotReachHere();
   } else if (is_atomic) {
     ShouldNotReachHere();
   } else {
-    generate_satb_enqueue(masm, ref_addr, tmp1, tmp2, slow_path, medium_path_continuation);
+    Label zpre, enqueue;
+    // At this point in G1, pre_val will have the value of the active flag in SATBMarkQueue, which is 1.
+    // Thus, we can use the pre_val register to skip G1 specific operations if we're on ZGC.
+    __ cmp(pre_val, (uint8_t)1);
+    __ br(Assembler::NE, zpre);
+    if (dst != noreg) {
+      __ load_heap_oop(pre_val, Address(dst, 0), noreg, noreg, AS_RAW);
+    }
+    // We don't want to enqueue in G1 if the previous value was null.
+    __ cbz(pre_val, medium_path_continuation);
+    __ b(enqueue);
+
+    // Set pre_val to 0 to branch to ZGC specific code for SATB
+    __ bind(zpre);
+    __ movzw(pre_val, (uint8_t)0);
+
+    __ bind(enqueue);
+    generate_satb_enqueue(masm, dst, pre_val, tmp1, tmp2, slow_path, medium_path_continuation);
     __ bind(slow_path_continuation);
     __ b(medium_path_continuation);
   }
@@ -171,6 +152,11 @@ static void generate_store_barrier_fast_path(MacroAssembler* masm,
   //   - If marking is active:     (tmp2 & tmp1) != 0, since tmp1 = 1, thus Z=0
   // In ZGC:
   // - The value of ZPointerStoreBadMask is loaded and tested with the reference address.
+  // In Serial and Parallel:
+  // - The SATB condition is always 0, therefore the branch to the medium/slow path is never taken.
+  //   Proceed to card marking.
+  // __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreBadBeforeMov);
+  // __ movzw(aux, barrier_Relocation::unpatched);
   __ ldr(aux, Address(rthread, AgnosticThreadLocalData::satb_condition_offset()));
   __ ldr(tmp1, ref_addr);
   __ tst(tmp1, aux);                    // Z=1 if the result of the bitwise AND is 0
@@ -179,11 +165,11 @@ static void generate_store_barrier_fast_path(MacroAssembler* masm,
   __ bind(*stub->continuation());
 
   // For all GCs, the source address to be stored will be in the "aux" register.
-  // In G1, the value 0 will be moved into the "aux" register and subsequently bitwise OR'd with
-  // the source address. This is semantically equivalent to a MOV (register) which is an
-  // alias of ORR (shifted register) where the first source operand is the zero register and the shift
-  // immediate is also zero.
-  // In ZGC, the value of ZPointerStoreGoodMask is patched and the new zpointer is colored.
+  // In G1, Serial, and Parallel, the value 0 will be moved into the "aux" register and
+  // subsequently bitwise OR'd with the source address. This is semantically equivalent to a MOV (register)
+  // which is an alias of ORR (shifted register) where the first source operand is the zero register and
+  // the shift immediate is also zero.
+  // In ZGC, the value of ZPointerStoreGoodMask is patched and the pointer is colored.
   assert_different_registers(src, aux);
   __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
   __ movzw(aux, barrier_Relocation::unpatched);
@@ -217,9 +203,10 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
 
   generate_store_barrier_medium_path(masm,
       stub->dst(),
+      stub->aux(),
       stub->tmp1(),
       stub->tmp2(),
-      false /* is_native */,
+      stub->is_native(),
       stub->is_atomic(),
       *stub->continuation(),
       slow,
@@ -232,7 +219,9 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
     SaveLiveRegisters save_live_registers(masm, stub);
     __ lea(c_rarg0, stub->dst());
 
-    if (stub->is_atomic()) {
+    if (stub->is_native()) {
+      __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_native_oop_field_without_healing_addr()));
+    } else if (stub->is_atomic()) {
       __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_oop_field_with_healing_addr()));
     } else if (stub->is_nokeepalive()) {
       __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::no_keepalive_store_barrier_on_oop_field_without_healing_addr()));
@@ -240,6 +229,11 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
       __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_oop_field_without_healing_addr()));
     }
     __ blr(rscratch1);
+
+    // BLOCK_COMMENT("G1 Runtime Call");
+    // __ mov(c_rarg1, rthread);
+    // __ mov(rscratch1, CAST_FROM_FN_PTR(address, G1BarrierSetRuntime::write_ref_field_pre_entry));
+    // __ blr(rscratch1);
   }
 
   // Stub exit

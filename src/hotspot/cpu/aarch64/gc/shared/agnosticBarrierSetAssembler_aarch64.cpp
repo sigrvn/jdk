@@ -98,15 +98,9 @@ void AgnosticBarrierSetAssembler::agnostic_store_barrier_c2(MacroAssembler *masm
   __ block_comment("START inline barrier");
 
   // Unconditionally buffer stores. Jump to stub where that happens
-  __ b(*stub->entry());
+  buffer_store(masm, obj, pre_val, tmp1, *stub->entry());
   
   __ bind(*stub->continuation());
-
-  // Agnosticly color the pointer. ANTODO: move this to AD file
-  __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
-  __ movzw(tmp1, barrier_Relocation::unpatched);
-  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
-  __ orr(tmp1, tmp1, new_val, Assembler::LSL, (uint8_t)0);
 
   __ block_comment("END inline barrier");
 }
@@ -119,83 +113,21 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
   // Stub entry
   __ bind(*stub->entry());
 
-  Label slow;
-  Label slow_continuation;
   Address ref_addr = stub->ref_addr();
-  Register prev_val = stub->prev_val();
-  Register tmp = stub->tmp();
-  bool is_native=false;// = stub->is_native();
-  bool is_atomic=false;// = stub->is_atomic();
-  Register n = stub->n();
-  Label& medium_path_continuation = *stub->continuation();
-  Label& slow_path = slow;
-  Label& slow_path_continuation = slow_continuation;
 
-  assert_different_registers(ref_addr.base(), ref_addr.index(), prev_val, tmp, n);
-
-  // The reason to end up in the medium path is that the pre-value was not 'good'.
-
-  if (is_native) {
-    ShouldNotReachHere();
-    __ b(slow_path);
-    __ bind(slow_path_continuation);
-    __ b(medium_path_continuation);
-  } else if (is_atomic) {
-    ShouldNotReachHere();
-  } else {
-    // A non-atomic relocatable object won't get to the medium fast path due to a
-    // raw null in the young generation. We only get here because the field is bad.
-    // In this path we don't need any self healing, so we can avoid a runtime call
-    // most of the time by buffering the store barrier to be applied lazily.
-    buffer_store(masm, ref_addr, prev_val, tmp, slow_path);
-
-    __ bind(slow_path_continuation);
-    __ b(medium_path_continuation);
-  }
-
-  __ bind(slow);
-
+  // Runtime call happens in this scope
   {
     SaveLiveRegisters save_live_registers(masm, stub);
 
-    // // Paranoia: we're sure c_rarg0, c_rarg1 and c_rarg2 are different, but they
-    // // may be n or ref_addr.base() or ref_addr.index().
-    // // Solution:
-    // if (c_rarg0 != n) {
-    //   // If we write into c_rarg0 first we don't lose n
-    //   __ lea(c_rarg0, ref_addr);
-    //   // Now write n into c_rarg1. We may be overwritting ref_addr fields but we don't care
-    //   __ mov(c_rarg1, n);
-    // } else {
-    //   // c_rarg0 is n. We need to put n into c_rarg1. But c_rarg1 may be a field of ref_addr
-    //   if (c_rarg1 != ref_addr.base() && c_rarg1 != ref_addr.index()) {
-    //     // Okay, it is not. So we can put n into there without overwritting things
-    //     __ mov(c_rarg1, n);
-    //     // By definition of things, ref_addr fields cannot be in c_rarg0 (as it is n)
-    //     __ lea(c_rarg0, ref_addr);
-    //     // Sanity check:
-    //     assert_different_registers(c_rarg1, c_rarg0, ref_addr.base(), ref_addr.index());
-    //   } else {
-    //     // Now, one of the ref_addr fields is in c_rarg1. And also n == c_rarg0, so we can put
-    //     // the address into rscratch1 (rscratch1 != c_rarg0 != c_rarg1)
-    //     __ lea(rscratch1, ref_addr);
-    //     // ref_addr is "saved" into rscratch1, so we can move n (c_rarg0) into c_rarg1
-    //     __ mov(c_rarg1, n);
-    //     // And bring back the address into c_rarg0
-    //     __ mov(c_rarg0, rscratch1);
-    //     // Sanity check:
-    //     assert_different_registers(c_rarg0, c_rarg1, rscratch1);
-    //   }
-    // }
-
     __ lea(c_rarg0, ref_addr);
-
     __ lea(rscratch1, RuntimeAddress(AgnosticBarrierSetRuntime::buffer_full_addr()));
     __ blr(rscratch1);
   }
 
   // Stub exit
-  __ b(slow_continuation);
+  __ b(*stub->continuation());
+
+  __ block_comment("END agnostic stub");
 }
 
 #undef __

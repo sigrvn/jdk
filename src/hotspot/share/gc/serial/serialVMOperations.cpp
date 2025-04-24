@@ -22,6 +22,7 @@
  *
  */
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "precompiled.hpp"
 #include "gc/serial/serialVMOperations.hpp"
 #include "gc/shared/gcLocker.hpp"
@@ -29,6 +30,10 @@
 void VM_SerialCollectForAllocation::doit() {
   SerialHeap* gch = SerialHeap::heap();
   GCCauseSetter gccs(gch, _gc_cause);
+  
+  CardTableAgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
+
   _result = gch->satisfy_failed_allocation(_word_size, _tlab);
   assert(_result == nullptr || gch->is_in_reserved(_result), "result not in heap");
 
@@ -40,5 +45,9 @@ void VM_SerialCollectForAllocation::doit() {
 void VM_SerialGCCollect::doit() {
   SerialHeap* gch = SerialHeap::heap();
   GCCauseSetter gccs(gch, _gc_cause);
+
+  CardTableAgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
+
   gch->try_collect_at_safepoint(_full);
 }

@@ -34,15 +34,11 @@
 class AgnosticBarrierSetC2State : public BarrierSetC2State {
 private:
   GrowableArray<AgnosticBarrierStubC2*>* _stubs;
-  int                                    _trampoline_stubs_count;
-  int                                    _stubs_start_offset;
 
 public:
   AgnosticBarrierSetC2State(Arena* arena)
     : BarrierSetC2State(arena),
-      _stubs(new (arena) GrowableArray<AgnosticBarrierStubC2*>(arena, 8,  0, nullptr)),
-      _trampoline_stubs_count(0),
-      _stubs_start_offset(0) {}
+      _stubs(new (arena) GrowableArray<AgnosticBarrierStubC2*>(arena, 8,  0, nullptr)) {}
 
   GrowableArray<AgnosticBarrierStubC2*>* stubs() {
     return _stubs;
@@ -56,38 +52,9 @@ public:
   bool needs_livein_data() const {
     return true;
   }
-
-  void inc_trampoline_stubs_count() {
-    assert(_trampoline_stubs_count != INT_MAX, "Overflow");
-    ++_trampoline_stubs_count;
-  }
-
-  int trampoline_stubs_count() {
-    return _trampoline_stubs_count;
-  }
-
-  void set_stubs_start_offset(int offset) {
-    _stubs_start_offset = offset;
-  }
-
-  int stubs_start_offset() {
-    return _stubs_start_offset;
-  }
 };
 
 Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) const {
-  // return ModRefBarrierSetC2::store_at_resolved(access, val);
-  // DecoratorSet decorators = access.decorators();
-  
-  // bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
-  // bool in_heap = (decorators & IN_HEAP) != 0;
-  // bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
-  // bool need_store_barrier = !(tightly_coupled_alloc && use_ReduceInitialCardMarks()) && (in_heap || anonymous);
-  // bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
-  // if (access.is_oop() && need_store_barrier) {
-  //   access.set_barrier_data(G1C2BarrierPre | G1C2BarrierPost);
-  // }
-  // return BarrierSetC2::store_at_resolved(access, val);
   DecoratorSet decorators = access.decorators();
 
   const TypePtr* adr_type = access.addr().type();
@@ -141,7 +108,6 @@ static AgnosticBarrierSetC2State* barrier_set_state() {
 void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   MacroAssembler masm(&cb);
   GrowableArray<AgnosticBarrierStubC2*>* const stubs = barrier_set_state()->stubs();
-  barrier_set_state()->set_stubs_start_offset(masm.offset());
 
   for (int i = 0; i < stubs->length(); i++) {
     // Make sure there is enough space in the code buffer
@@ -156,8 +122,8 @@ void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   masm.flush();
 }
 
-AgnosticStoreBarrierStubC2* AgnosticStoreBarrierStubC2::create(const MachNode* node, Address ref_addr, Register prev_val, Register tmp, bool is_native, bool is_atomic, Register n) {
-  AgnosticStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) AgnosticStoreBarrierStubC2(node, ref_addr, prev_val, tmp, is_native, is_atomic, n);
+AgnosticStoreBarrierStubC2* AgnosticStoreBarrierStubC2::create(const MachNode* node, Address ref_addr) {
+  AgnosticStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) AgnosticStoreBarrierStubC2(node, ref_addr);
   if (!Compile::current()->output()->in_scratch_emit_size()) {
     barrier_set_state()->stubs()->append(stub);
   }
@@ -165,15 +131,9 @@ AgnosticStoreBarrierStubC2* AgnosticStoreBarrierStubC2::create(const MachNode* n
   return stub;
 }
 
-AgnosticStoreBarrierStubC2::AgnosticStoreBarrierStubC2(const MachNode* node, Address ref_addr, Register prev_val, Register tmp,
-                                                       bool is_native, bool is_atomic, Register n)
+AgnosticStoreBarrierStubC2::AgnosticStoreBarrierStubC2(const MachNode* node, Address ref_addr)
   : AgnosticBarrierStubC2(node),
-    _ref_addr(ref_addr),
-    _prev_val(prev_val),
-    _tmp(tmp),
-    _new(n),
-    _is_native(is_native),
-    _is_atomic(is_atomic) {}
+    _ref_addr(ref_addr) {}
 
 void AgnosticStoreBarrierStubC2::emit_code(MacroAssembler& masm) {
   AgnosticBarrierSetAssembler* bs = static_cast<AgnosticBarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());

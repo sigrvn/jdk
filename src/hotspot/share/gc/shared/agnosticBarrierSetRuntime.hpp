@@ -24,7 +24,15 @@
 #ifndef SHARE_GC_SHARED_AGNOSTICBARRIERSETRUNTIME_HPP
 #define SHARE_GC_SHARED_AGNOSTICBARRIERSETRUNTIME_HPP
 
+#include "gc/g1/g1BarrierSet.hpp"
+#include "gc/parallel/psCardTable.hpp"
+#include "gc/serial/cardTableRS.hpp"
 #include "gc/z/zAddress.hpp"
+#include "gc/shared/agnosticStoreBarrierBuffer.hpp"
+#include "gc/shared/agnosticThreadLocalData.hpp"
+#include "gc/g1/g1ThreadLocalData.hpp"
+#include "gc/serial/serialHeap.hpp"
+#include "gc/parallel/parallelScavengeHeap.hpp"
 #include "memory/allStatic.hpp"
 #include "oops/accessDecorators.hpp"
 #include "oops/oop.hpp"
@@ -35,7 +43,7 @@
 
 class AgnosticBarrierSetRuntime : public AllStatic {
 private:
-  static void buffer_full(oopDesc* p);
+  static void buffer_full(oopDesc* oop);
   static void g1_slow_path(oopDesc* oop, Thread* thread);
   static void ct_slow_path(oopDesc* oop, Thread* thread);
   static void z_slow_path(oopDesc* oop, Thread* thread);
@@ -43,5 +51,58 @@ public:
   static address buffer_full_addr();
   static void do_magic();
 };
+
+class G1AgnosticBarrierSetFlush : public ThreadClosure {
+public:
+  virtual void do_thread(Thread* thread) {
+    AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+    CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(thread);
+    SATBMarkQueueSet* _qset = &G1BarrierSet::satb_mark_queue_set();
+    SATBMarkQueue& queue = _qset->satb_queue_for_thread(thread);
+
+    while (buffer->is_empty() == false) {
+      AgnosticStoreBarrierEntry* entry = buffer->pop();
+      oopDesc* pre_val = entry->_prev;
+      oopDesc* ref_addr = entry->_p;
+      assert(ref_addr != nullptr, "must be");
+
+      if (pre_val != nullptr && queue.is_active()) {
+        G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+      }
+  
+      G1CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> G1CardTable::card_shift()];
+      //printf("%p\n", result);
+      *result = G1CardTable::dirty_card_val();
+    }
+  }
+};
+
+class CardTableAgnosticBarrierSetFlush : public ThreadClosure {
+  public:
+    virtual void do_thread(Thread* thread) {
+      CardTable::CardValue* table;
+      if (Universe::heap()->kind() == CollectedHeap::Serial) {
+        table = SerialHeap::heap()->rem_set()->byte_map_base();
+      } else {
+        assert(Universe::heap()->kind() == CollectedHeap::Parallel, "must be");
+        table = ParallelScavengeHeap::heap()->card_table()->byte_map_base();
+      }
+      assert((uint64_t)((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base()==(uint64_t)table, "sanity check");
+      
+      AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+
+      // Flush the buffer
+      while (buffer->is_empty() == false) {
+        AgnosticStoreBarrierEntry* entry = buffer->pop();
+        oopDesc* pre_val = entry->_prev;
+        oopDesc* ref_addr = entry->_p;
+        assert(ref_addr != nullptr, "must be");
+
+        // CT
+        CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
+        *result = CardTable::dirty_card_val();
+      }
+    }
+  };
 
 #endif // SHARE_GC_SHARED_AGNOSTICBARRIERSETRUNTIME_HPP

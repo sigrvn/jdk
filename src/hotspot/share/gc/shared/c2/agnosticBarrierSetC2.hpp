@@ -35,7 +35,7 @@
 const int AgnosticBarrier = 1;  // Async agnostic barriers are always pre
 const int AgnosticElided  = 2;
 
-class AgnosticBarrierSetC2: public G1BarrierSetC2 {
+class AgnosticBarrierSetC2: public CardTableBarrierSetC2 {
 protected:
   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
 
@@ -55,25 +55,15 @@ protected:
 class AgnosticStoreBarrierStubC2 : public AgnosticBarrierStubC2 {
 private:
   Address _ref_addr;
-  Register _prev_val;
-  Register _tmp;
-  Register _new;
-  bool _is_native;
-  bool _is_atomic;
 
 protected:
-  AgnosticStoreBarrierStubC2(const MachNode* node, Address ref_addr, Register prev_val, Register tmp, bool is_native, bool is_atomic, Register n);
+  AgnosticStoreBarrierStubC2(const MachNode* node, Address ref_addr);
   
 public:
-  static AgnosticStoreBarrierStubC2* create(const MachNode* node, Address ref_addr, Register prev_val, Register tmp, bool is_native, bool is_atomic, Register n);
+  static AgnosticStoreBarrierStubC2* create(const MachNode* node, Address ref_addr);
   void emit_code(MacroAssembler& masm);
 
-  Address ref_addr() const  {    return _ref_addr;  }
-  Register prev_val() const {    return _prev_val;  }
-  Register tmp() const      {    return _tmp;  }
-  Register n() const      {    return _new;  }
-  bool is_native() const    {    return _is_native;  }
-  bool is_atomic() const    {    return _is_atomic;  }
+  Address ref_addr() const  { return _ref_addr; }
 };
 
 #endif // SHARE_GC_SHARED_C2_AGNOSTICBARRIERSETC2_HPP

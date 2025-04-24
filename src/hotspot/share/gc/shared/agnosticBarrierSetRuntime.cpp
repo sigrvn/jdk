@@ -22,6 +22,7 @@
  */
 
 #include "gc/g1/g1BarrierSet.hpp"
+#include "gc/g1/g1CollectedHeap.hpp"
 #include "gc/g1/g1ThreadLocalData.hpp"
 #include "gc/parallel/parallelScavengeHeap.hpp"
 #include "gc/parallel/psCardTable.hpp"
@@ -51,42 +52,36 @@ void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread) {
   CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(thread);
   AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
 
+  // Flush the buffer
   while (buffer->is_empty() == false) {
     AgnosticStoreBarrierEntry* entry = buffer->pop();
     oopDesc* pre_val = entry->_prev;
     oopDesc* ref_addr = entry->_p;
     assert(ref_addr != nullptr, "must be");
 
-    //oopDesc* new_val = Atomic::load(ref_addr);
+    // SATB
+    if (pre_val != nullptr && queue.is_active()) {
+      G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+    }
 
-    if (pre_val != nullptr && queue.is_active()) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
-
-    printf("ref addr %p\n", (void*)ref_addr);
-    printf("prev val %p\n", (void*)pre_val);
-    //if (new_val == nullptr) continue;
-    //printf("new val  %p\n", (void*)new_val);
-    //if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
-      CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-      printf("tarjeta  %p\n", (void*)result);
-      *result = CardTable::dirty_card_val();
-    //}
+    // CT
+    G1CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> G1CardTable::card_shift()];
+    printf("%p\n", result);
+    *result = G1CardTable::dirty_card_val();
   }
 
-  //oopDesc* new_val = n;
-  //oopDesc* pre_val = Atomic::load(oop);
+  // Deal with the last item that we could not buffer
   oopDesc* pre_val = oop->obj_field_acquire(0);
 
-  if (pre_val != nullptr && queue.is_active()) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+  // SATB
+  if (pre_val != nullptr && queue.is_active()) {
+    G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
+  }
 
-  printf("ref addr %p\n", (void*)oop);
-  printf("prev val %p\n", (void*)pre_val);
-  //if (new_val == nullptr) return;
-  //printf("new_val  %p\n", (void*)new_val);
-  //if (!G1HeapRegion::is_in_same_region(oop, new_val)) {
-    CardTable::CardValue* result = &table[uintptr_t(oop) >> CardTable::card_shift()];
-    printf("tarjeta  %p\n", (void*)result);
-    *result = CardTable::dirty_card_val();
-  //}
+  // CT
+  G1CardTable::CardValue* result = &table[uintptr_t(oop) >> G1CardTable::card_shift()];
+  // printf("%p\n", result);
+  *result = G1CardTable::dirty_card_val();
 }
 
 void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread) {
@@ -97,39 +92,24 @@ void AgnosticBarrierSetRuntime::ct_slow_path(oopDesc* oop, Thread* thread) {
     assert(Universe::heap()->kind() == CollectedHeap::Parallel, "must be");
     table = ParallelScavengeHeap::heap()->card_table()->byte_map_base();
   }
-  assert((uint64_t)((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base()==(uint64_t)table, "lolky");
+  assert((uint64_t)((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base()==(uint64_t)table, "sanity check");
   
   AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
 
+  // Flush the buffer
   while (buffer->is_empty() == false) {
     AgnosticStoreBarrierEntry* entry = buffer->pop();
     oopDesc* pre_val = entry->_prev;
     oopDesc* ref_addr = entry->_p;
     assert(ref_addr != nullptr, "must be");
 
-    //oopDesc* new_val = ref_addr->obj_field_acquire(0);
-
-    printf("ref addr %p\n", (void*)ref_addr);
-    printf("prev val %p\n", (void*)pre_val);
-    //if (new_val == nullptr) continue;
-    //printf("new val  %p\n", (void*)new_val);
+    // CT
     CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-    printf("tarjeta  %p\n", (void*)result);
     *result = CardTable::dirty_card_val();
   }
 
-  //oopDesc* new_val = n;
-  #ifdef ASSERT
-  if (Universe::is_in_heap(oop) == false) {
-    assert(false, "me muero");
-  }
-  #endif
-
-  printf("ref addr %p\n", (void*)oop);
-  //if (new_val == nullptr) return;
-  //printf("new_val  %p\n", (void*)new_val);
+  // Deal with the last item we could not buffer
   CardTable::CardValue* result = &table[uintptr_t(oop) >> CardTable::card_shift()];
-  printf("tarjeta  %p\n", (void*)result);
   *result = CardTable::dirty_card_val();
 }
 
@@ -138,49 +118,46 @@ void AgnosticBarrierSetRuntime::z_slow_path(oopDesc* oop, Thread* thread) {
   ZStoreBarrierBuffer* zbuffer = ZStoreBarrierBuffer::buffer_for_store(false);
   assert(zbuffer != nullptr, "must be");
 
+  // Flush the buffer
   while (buffer->is_empty() == false) {
     AgnosticStoreBarrierEntry* entry = buffer->pop();
     oopDesc* pre_val = entry->_prev;
     oopDesc* ref_addr = entry->_p;
     assert(ref_addr != nullptr, "must be");
 
+    // Push to ZStoreBarrierBuffer only if the store is bad
     if (ZPointer::is_store_bad(static_cast<zpointer>((uintptr_t)pre_val))) {
       zbuffer->add((zpointer *)ref_addr, static_cast<zpointer>((uintptr_t)pre_val));
     }
   }
   
+  // Deal with the last item we could not buffer
   ZBarrier::store_barrier_on_heap_oop_field((zpointer *)oop, false);
 }
 
-JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* p))
+JRT_LEAF(void, AgnosticBarrierSetRuntime::buffer_full(oopDesc* oop))
   // Buffer is full, let's deal with its contents
   Thread* thread = Thread::current();
   assert(thread->is_Java_thread(), "needs to");
   switch (Universe::heap()->kind()) {
-  case CollectedHeap::None:
-  case CollectedHeap::Epsilon:
-    break;
   case CollectedHeap::Serial:
   case CollectedHeap::Parallel:
-    ct_slow_path(p, thread);
+    ct_slow_path(oop, thread);
     break;
   case CollectedHeap::G1:
-    g1_slow_path(p, thread);
+    g1_slow_path(oop, thread);
     break;
   case CollectedHeap::Z:
-    z_slow_path(p, thread);
+    z_slow_path(oop, thread);
     break;
+  case CollectedHeap::None:
+  case CollectedHeap::Epsilon:
   case CollectedHeap::Shenandoah:
     ShouldNotReachHere();
     break;
   }
-  //ZBarrier::store_barrier_on_heap_oop_field((zpointer*)p, true /* heal */);
 JRT_END
 
 address AgnosticBarrierSetRuntime::buffer_full_addr() {
   return reinterpret_cast<address>(buffer_full);
-}
-
-void AgnosticBarrierSetRuntime::do_magic() {
-  printf("super slow\n");
 }

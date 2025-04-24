@@ -192,6 +192,10 @@ static void generate_store_barrier_fast_path(MacroAssembler* masm,
   __ bind(done);
 }
 
+static void generate_runtime_address_load(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) {
+
+}
+
 void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler* masm, AgnosticStoreBarrierStubC2* stub) const {
   Assembler::InlineSkippedInstructionsCounter skipped_counter(masm);
   BLOCK_COMMENT("AgnosticStoreBarrierStubC2");
@@ -215,10 +219,23 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
   __ bind(slow);
 
   {
-    BLOCK_COMMENT("Z Runtime Call");
     SaveLiveRegisters save_live_registers(masm, stub);
-    __ lea(c_rarg0, stub->dst());
 
+    Label z_runtime;
+    // Conditionally load either the reference address if on ZGC or the previous value if on G1 
+    // from previously-set flag in generate_store_barrier_medium_path.
+    __ csel(c_rarg0, stub->dst(), stub->aux(), Assembler::NE);
+    __ br(Assembler::NE, z_runtime);
+
+    BLOCK_COMMENT("G1 Runtime Call");
+    __ lea(c_rarg1, rthread);
+    __ mov(rscratch1, CAST_FROM_FN_PTR(address, G1BarrierSetRuntime::write_ref_field_pre_entry));
+    __ blr(rscratch1);
+
+    __ b(slow_continuation);
+
+    BLOCK_COMMENT("Z Runtime Call");
+    __ bind(z_runtime);
     if (stub->is_native()) {
       __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_native_oop_field_without_healing_addr()));
     } else if (stub->is_atomic()) {
@@ -229,11 +246,6 @@ void AgnosticBarrierSetAssembler::generate_store_barrier_stub_c2(MacroAssembler*
       __ lea(rscratch1, RuntimeAddress(ZBarrierSetRuntime::store_barrier_on_oop_field_without_healing_addr()));
     }
     __ blr(rscratch1);
-
-    // BLOCK_COMMENT("G1 Runtime Call");
-    // __ mov(c_rarg1, rthread);
-    // __ mov(rscratch1, CAST_FROM_FN_PTR(address, G1BarrierSetRuntime::write_ref_field_pre_entry));
-    // __ blr(rscratch1);
   }
 
   // Stub exit

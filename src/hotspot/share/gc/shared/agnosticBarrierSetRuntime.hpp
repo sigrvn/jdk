@@ -71,7 +71,6 @@ public:
       }
   
       G1CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> G1CardTable::card_shift()];
-      //printf("%p\n", result);
       *result = G1CardTable::dirty_card_val();
     }
   }

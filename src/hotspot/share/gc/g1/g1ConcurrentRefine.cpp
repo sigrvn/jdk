@@ -22,6 +22,8 @@
  *
  */
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
+#include "gc/shared/agnosticThreadLocalData.hpp"
 #include "precompiled.hpp"
 #include "gc/g1/g1Analytics.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
@@ -41,6 +43,7 @@
 #include "memory/iterator.hpp"
 #include "runtime/java.hpp"
 #include "runtime/mutexLocker.hpp"
+#include "runtime/thread.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/ticks.hpp"
@@ -198,6 +201,11 @@ public:
 
   virtual void do_thread(Thread* t) {
     G1BarrierSet* bs = G1BarrierSet::g1_barrier_set();
+
+    // Flush our buffer before swapping tables
+    G1AgnosticBarrierSetFlush closure;
+    closure.do_thread(t);
+
     G1ThreadLocalData::set_byte_map_base(t, bs->card_table()->byte_map_base());
   }
 };
@@ -211,7 +219,6 @@ bool G1ConcurrentRefineWorkState::swap_java_threads_ct() {
     SuspendibleThreadSetLeaver sts_leave;
 
     G1SwapThreadCardTableClosure cl;
-    assert(false, "java threads swap");
     Handshake::execute(&cl);
   }
 
@@ -251,7 +258,6 @@ bool G1ConcurrentRefineWorkState::swap_gc_threads_ct() {
     } op;
 
     SuspendibleThreadSetLeaver sts_leave;
-    assert(false, "gc threads swap");
     VMThread::execute(&op);
   }
 

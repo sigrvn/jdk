@@ -22,6 +22,8 @@
  *
  */
 
+#include "gc/g1/g1CollectedHeap.hpp"
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "gc/shared/c2/agnosticBarrierSetC2.hpp"
 #include "precompiled.hpp"
 #include "gc/g1/g1BarrierSet.inline.hpp"
@@ -70,44 +72,11 @@ G1BarrierSet::~G1BarrierSet() {
 }
 
 void G1BarrierSet::swap_global_card_table() {
-  class DoThings : public ThreadClosure {
-    SATBMarkQueueSet* _qset;
-    bool _active;
-  public:
-    DoThings(bool active) {}
-    virtual void do_thread(Thread* t) {
-      AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
-      CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
-      SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
-      _qset = &satb_mq_set;
-      SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
-
-      while (buffer->is_empty() == false) {
-        AgnosticStoreBarrierEntry* entry = buffer->pop();
-        oopDesc* pre_val = entry->_prev;
-        oopDesc* ref_addr = entry->_p;
-        assert(ref_addr != nullptr, "must be");
-    
-        //oopDesc* new_val = Atomic::load(ref_addr);
-    
-        if (pre_val != nullptr && queue.is_active()) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
-    
-        printf("ref addr %p\n", (void*)ref_addr);
-        printf("prev val %p\n", (void*)pre_val);
-        //if (new_val == nullptr) continue;
-        //printf("new val  %p\n", (void*)new_val);
-        //if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
-          CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-          printf("tarjeta  %p\n", (void*)result);
-          *result = CardTable::dirty_card_val();
-        //}
-      }
-    }
-  } closure(true);
-  if (Threads_lock->owner() == Thread::current()) {
-    Threads::threads_do(&closure);
-  } else {
-    assert(false, "couldn't flush");
+  // Before swapping tables, flush our buffers. If we're not at
+  // a safepoint, we'll do that later when handshaking
+  if (SafepointSynchronize::is_at_safepoint()) {
+    G1AgnosticBarrierSetFlush closure;
+    Threads::java_threads_do(&closure);
   }
 
   G1CardTable* temp = static_cast<G1CardTable*>(_card_table);

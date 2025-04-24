@@ -1084,11 +1084,7 @@ class G1MergeHeapRootsTask : public WorkerTask {
       // We do not need to do this extra work for initial evacuation because we
       // make sure the refinement table is clean for all regions either in
       // concurrent refinement or in the merge refinement table phase earlier.
-      if (!_initial_evacuation) {
-        hr->clear_refinement_table();
-      } else {
-        assert_refinement_table_clear(hr);
-      }
+      hr->clear_refinement_table();
       // Evacuation failure uses the bitmap to record evacuation failed objects,
       // so the bitmap for the regions in the collection set must be cleared if not already.
       if (should_clear_region(hr)) {

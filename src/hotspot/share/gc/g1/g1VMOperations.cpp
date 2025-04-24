@@ -22,6 +22,7 @@
  *
  */
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "precompiled.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
 #include "gc/g1/g1ConcurrentMarkThread.inline.hpp"
@@ -102,44 +103,9 @@ void VM_G1TryInitiateConcMark::doit() {
     // we've rejected this request.
     _whitebox_attached = true;
   } else {
-    
-    class DoThings : public ThreadClosure {
-      SATBMarkQueueSet* _qset;
-      bool _active;
-    public:
-      DoThings(bool active) {}
-      virtual void do_thread(Thread* t) {
-        AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
-        CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
-        SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
-        _qset = &satb_mq_set;
-        SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
-  
-        while (buffer->is_empty() == false) {
-          AgnosticStoreBarrierEntry* entry = buffer->pop();
-          oopDesc* pre_val = entry->_prev;
-          oopDesc* ref_addr = entry->_p;
-          assert(ref_addr != nullptr, "must be");
-      
-          //oopDesc* new_val = Atomic::load(ref_addr);
-      
-          if (pre_val != nullptr && queue.is_active()) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
-      
-          printf("ref addr %p\n", (void*)ref_addr);
-          printf("prev val %p\n", (void*)pre_val);
-          //if (new_val == nullptr) continue;
-          //printf("new val  %p\n", (void*)new_val);
-          //if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
-            CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-            printf("tarjeta  %p\n", (void*)result);
-            *result = CardTable::dirty_card_val();
-          //}
-        }
-      }
-    } closure(true);
-    if (Threads_lock->owner() == Thread::current()) {
-      Threads::threads_do(&closure);
-    }
+    // Flush the thread-local barrier buffers
+    G1AgnosticBarrierSetFlush closure;
+    Threads::java_threads_do(&closure);
 
     _gc_succeeded = g1h->do_collection_pause_at_safepoint();
     assert(_gc_succeeded, "No reason to fail");
@@ -158,44 +124,9 @@ void VM_G1CollectForAllocation::doit() {
   GCCauseSetter x(g1h, _gc_cause);
   // Try a partial collection of some kind.
   
-  class DoThings : public ThreadClosure {
-    SATBMarkQueueSet* _qset;
-    bool _active;
-  public:
-    DoThings(bool active) {}
-    virtual void do_thread(Thread* t) {
-      AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(t);
-      CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(t);
-      SATBMarkQueueSet& satb_mq_set = G1BarrierSet::satb_mark_queue_set();
-      _qset = &satb_mq_set;
-      SATBMarkQueue& queue = _qset->satb_queue_for_thread(t);
-
-      while (buffer->is_empty() == false) {
-        AgnosticStoreBarrierEntry* entry = buffer->pop();
-        oopDesc* pre_val = entry->_prev;
-        oopDesc* ref_addr = entry->_p;
-        assert(ref_addr != nullptr, "must be");
-    
-        //oopDesc* new_val = Atomic::load(ref_addr);
-    
-        if (pre_val != nullptr && queue.is_active()) G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, pre_val);
-    
-        printf("ref addr %p\n", (void*)ref_addr);
-        printf("prev val %p\n", (void*)pre_val);
-        //if (new_val == nullptr) continue;
-        //printf("new val  %p\n", (void*)new_val);
-        //if (!G1HeapRegion::is_in_same_region(ref_addr, new_val)) {
-          CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-          printf("tarjeta  %p\n", (void*)result);
-          *result = CardTable::dirty_card_val();
-        //}
-      }
-    }
-  } closure(true);
-  if (Threads_lock->owner() == Thread::current()) {
-    Threads::threads_do(&closure);
-  }
-
+  // Flush the thread-local barrier buffers
+  G1AgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
 
   _gc_succeeded = g1h->do_collection_pause_at_safepoint();
   assert(_gc_succeeded, "no reason to fail");
@@ -216,6 +147,10 @@ void VM_G1PauseConcurrent::doit() {
   GCIdMark gc_id_mark(_gc_id);
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   GCTraceCPUTime tcpu(g1h->concurrent_mark()->gc_tracer_cm());
+
+  // Flush the thread-local barrier buffers
+  G1AgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
 
   // GCTraceTime(...) only supports sub-phases, so a more verbose version
   // is needed when we report the top-level pause phase.

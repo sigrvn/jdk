@@ -22,6 +22,7 @@
  *
  */
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "precompiled.hpp"
 #include "gc/parallel/psParallelCompact.inline.hpp"
 #include "gc/parallel/parallelScavengeHeap.inline.hpp"
@@ -41,6 +42,9 @@ VM_ParallelCollectForAllocation::VM_ParallelCollectForAllocation(size_t word_siz
 
 void VM_ParallelCollectForAllocation::doit() {
   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
+
+  CardTableAgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
 
   GCCauseSetter gccs(heap, _gc_cause);
   _result = heap->satisfy_failed_allocation(_word_size, _is_tlab);
@@ -63,6 +67,9 @@ VM_ParallelGCCollect::VM_ParallelGCCollect(uint gc_count,
 
 void VM_ParallelGCCollect::doit() {
   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
+
+  CardTableAgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
 
   GCCauseSetter gccs(heap, _gc_cause);
   heap->try_collect_at_safepoint(_full);

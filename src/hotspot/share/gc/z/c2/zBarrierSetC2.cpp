@@ -69,12 +69,12 @@ public:
   public:
     Iterator(ZArenaHashtable* table)
       : _table(table),
-        _current_entry(table->_table[0]),
-        _current_index(0) {
-      if (_current_entry == nullptr) {
-        next();
+      _current_entry(table->_table[0]),
+      _current_index(0) {
+        if (_current_entry == nullptr) {
+          next();
+        }
       }
-    }
 
     bool has_next() { return _current_entry != nullptr; }
     K key()         { return _current_entry->_key; }
@@ -92,9 +92,9 @@ public:
 
   ZArenaHashtable(Arena* arena)
     : _arena(arena),
-      _table() {
-    Copy::zero_to_bytes(&_table, sizeof(_table));
-  }
+    _table() {
+      Copy::zero_to_bytes(&_table, sizeof(_table));
+    }
 
   void add(K key, V value) {
     ZArenaHashtableEntry* entry = new (_arena) ZArenaHashtableEntry();
@@ -122,24 +122,26 @@ typedef ZArenaHashtable<intptr_t, bool, 4> ZOffsetTable;
 
 class ZBarrierSetC2State : public BarrierSetC2State {
 private:
-  GrowableArray<ZBarrierStubC2*>* _stubs;
+  GrowableArray<BarrierStubC2*>* _stubs;
   int                             _trampoline_stubs_count;
   int                             _stubs_start_offset;
 
 public:
   ZBarrierSetC2State(Arena* arena)
     : BarrierSetC2State(arena),
-      _stubs(new (arena) GrowableArray<ZBarrierStubC2*>(arena, 8,  0, nullptr)),
-      _trampoline_stubs_count(0),
-      _stubs_start_offset(0) {}
+    _stubs(new (arena) GrowableArray<BarrierStubC2*>(arena, 8,  0, nullptr)),
+    _trampoline_stubs_count(0),
+    _stubs_start_offset(0) {}
 
-  GrowableArray<ZBarrierStubC2*>* stubs() {
+  GrowableArray<BarrierStubC2*>* stubs() {
     return _stubs;
   }
 
   bool needs_liveness_data(const MachNode* mach) const {
     // Don't need liveness data for nodes without barriers
-    return mach->barrier_data() != ZBarrierElided;
+    return UseAgnosticBarriers 
+      ? (mach->barrier_data() != AgnosticBarrierElided)
+      : (mach->barrier_data() != ZBarrierElided);
   }
 
   bool needs_livein_data() const {
@@ -200,14 +202,14 @@ ZLoadBarrierStubC2* ZLoadBarrierStubC2::create(const MachNode* node, Address ref
 
 ZLoadBarrierStubC2::ZLoadBarrierStubC2(const MachNode* node, Address ref_addr, Register ref)
   : ZBarrierStubC2(node),
-    _ref_addr(ref_addr),
-    _ref(ref) {
-  assert_different_registers(ref, ref_addr.base());
-  assert_different_registers(ref, ref_addr.index());
-  // The runtime call updates the value of ref, so we should not spill and
-  // reload its outdated value.
-  dont_preserve(ref);
-}
+  _ref_addr(ref_addr),
+  _ref(ref) {
+    assert_different_registers(ref, ref_addr.base());
+    assert_different_registers(ref, ref_addr.index());
+    // The runtime call updates the value of ref, so we should not spill and
+    // reload its outdated value.
+    dont_preserve(ref);
+  }
 
 Address ZLoadBarrierStubC2::ref_addr() const {
   return _ref_addr;
@@ -248,18 +250,18 @@ ZStoreBarrierStubC2* ZStoreBarrierStubC2::create(const MachNode* node, Address r
 }
 
 ZStoreBarrierStubC2::ZStoreBarrierStubC2(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer,
-                                         bool is_native, bool is_atomic, bool is_nokeepalive)
+    bool is_native, bool is_atomic, bool is_nokeepalive)
   : ZBarrierStubC2(node),
-    _ref_addr(ref_addr),
-    _new_zaddress(new_zaddress),
-    _new_zpointer(new_zpointer),
-    _is_native(is_native),
-    _is_atomic(is_atomic),
-    _is_nokeepalive(is_nokeepalive) {}
+  _ref_addr(ref_addr),
+  _new_zaddress(new_zaddress),
+  _new_zpointer(new_zpointer),
+  _is_native(is_native),
+  _is_atomic(is_atomic),
+  _is_nokeepalive(is_nokeepalive) {}
 
-Address ZStoreBarrierStubC2::ref_addr() const {
-  return _ref_addr;
-}
+  Address ZStoreBarrierStubC2::ref_addr() const {
+    return _ref_addr;
+  }
 
 Register ZStoreBarrierStubC2::new_zaddress() const {
   return _new_zaddress;
@@ -310,7 +312,7 @@ void ZBarrierSetC2::late_barrier_analysis() const {
 
 void ZBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   MacroAssembler masm(&cb);
-  GrowableArray<ZBarrierStubC2*>* const stubs = barrier_set_state()->stubs();
+  GrowableArray<BarrierStubC2*>* const stubs = barrier_set_state()->stubs();
   barrier_set_state()->set_stubs_start_offset(masm.offset());
 
   for (int i = 0; i < stubs->length(); i++) {
@@ -329,7 +331,7 @@ void ZBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
 int ZBarrierSetC2::estimate_stub_size() const {
   Compile* const C = Compile::current();
   BufferBlob* const blob = C->output()->scratch_buffer_blob();
-  GrowableArray<ZBarrierStubC2*>* const stubs = barrier_set_state()->stubs();
+  GrowableArray<BarrierStubC2*>* const stubs = barrier_set_state()->stubs();
   int size = 0;
 
   for (int i = 0; i < stubs->length(); i++) {
@@ -384,13 +386,13 @@ Node* ZBarrierSetC2::load_at_resolved(C2Access& access, const Type* val_type) co
 }
 
 Node* ZBarrierSetC2::atomic_cmpxchg_val_at_resolved(C2AtomicParseAccess& access, Node* expected_val,
-                                                    Node* new_val, const Type* val_type) const {
+    Node* new_val, const Type* val_type) const {
   set_barrier_data(access);
   return BarrierSetC2::atomic_cmpxchg_val_at_resolved(access, expected_val, new_val, val_type);
 }
 
 Node* ZBarrierSetC2::atomic_cmpxchg_bool_at_resolved(C2AtomicParseAccess& access, Node* expected_val,
-                                                     Node* new_val, const Type* value_type) const {
+    Node* new_val, const Type* value_type) const {
   set_barrier_data(access);
   return BarrierSetC2::atomic_cmpxchg_bool_at_resolved(access, expected_val, new_val, value_type);
 }
@@ -401,8 +403,8 @@ Node* ZBarrierSetC2::atomic_xchg_at_resolved(C2AtomicParseAccess& access, Node* 
 }
 
 bool ZBarrierSetC2::array_copy_requires_gc_barriers(bool tightly_coupled_alloc, BasicType type,
-                                                    bool is_clone, bool is_clone_instance,
-                                                    ArrayCopyPhase phase) const {
+    bool is_clone, bool is_clone_instance,
+    ArrayCopyPhase phase) const {
   if (phase == ArrayCopyPhase::Parsing) {
     return false;
   }
@@ -659,7 +661,7 @@ void ZBarrierSetC2::analyze_dominating_barriers_impl(Node_List& accesses, Node_L
     }
 
     for (uint j = 0; j < access_dominators.size(); j++) {
-     const  Node* const mem = access_dominators.at(j);
+      const  Node* const mem = access_dominators.at(j);
       if (mem->is_Phi()) {
         // Allocation node
         if (mem != access_obj) {
@@ -672,7 +674,7 @@ void ZBarrierSetC2::analyze_dominating_barriers_impl(Node_List& accesses, Node_L
           continue;
         }
         assert((is_concrete(access_offset) && access_offset >= 0) || (is_unknown(access_offset) && is_array_allocation(mem)),
-               "candidate allocation-dominated access offsets must be either concrete and nonnegative, or unknown (for array allocations only)");
+            "candidate allocation-dominated access offsets must be either concrete and nonnegative, or unknown (for array allocations only)");
       } else {
         // Access node
         const MachNode* const mem_mach = mem->as_Mach();
@@ -691,7 +693,7 @@ void ZBarrierSetC2::analyze_dominating_barriers_impl(Node_List& accesses, Node_L
           continue;
         }
         assert(is_concrete(access_offset) && access_offset >= 0,
-               "candidate non-allocation-dominated access offsets must be concrete and nonnegative");
+            "candidate non-allocation-dominated access offsets must be concrete and nonnegative");
       }
 
       Block* mem_block = cfg->get_block_for_node(mem);
@@ -773,34 +775,34 @@ void ZBarrierSetC2::analyze_dominating_barriers() const {
 
       MachNode* const mach = node->as_Mach();
       switch (mach->ideal_Opcode()) {
-      case Op_LoadP:
-        if ((mach->barrier_data() & ZBarrierStrong) != 0 &&
-            (mach->barrier_data() & ZBarrierNoKeepalive) == 0) {
-          loads.push(mach);
-          load_dominators.push(mach);
-        }
-        break;
-      case Op_StoreP:
-        if (mach->barrier_data() != 0) {
-          stores.push(mach);
-          load_dominators.push(mach);
-          store_dominators.push(mach);
-          atomic_dominators.push(mach);
-        }
-        break;
-      case Op_CompareAndExchangeP:
-      case Op_CompareAndSwapP:
-      case Op_GetAndSetP:
-        if (mach->barrier_data() != 0) {
-          atomics.push(mach);
-          load_dominators.push(mach);
-          store_dominators.push(mach);
-          atomic_dominators.push(mach);
-        }
-        break;
+        case Op_LoadP:
+          if ((mach->barrier_data() & ZBarrierStrong) != 0 &&
+              (mach->barrier_data() & ZBarrierNoKeepalive) == 0) {
+            loads.push(mach);
+            load_dominators.push(mach);
+          }
+          break;
+        case Op_StoreP:
+          if (mach->barrier_data() != 0) {
+            stores.push(mach);
+            load_dominators.push(mach);
+            store_dominators.push(mach);
+            atomic_dominators.push(mach);
+          }
+          break;
+        case Op_CompareAndExchangeP:
+        case Op_CompareAndSwapP:
+        case Op_GetAndSetP:
+          if (mach->barrier_data() != 0) {
+            atomics.push(mach);
+            load_dominators.push(mach);
+            store_dominators.push(mach);
+            atomic_dominators.push(mach);
+          }
+          break;
 
-      default:
-        break;
+        default:
+          break;
       }
     }
   }

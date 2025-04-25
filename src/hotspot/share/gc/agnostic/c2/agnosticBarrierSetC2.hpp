@@ -27,12 +27,83 @@
 
 #include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/shared/c2/cardTableBarrierSetC2.hpp"
+#include "gc/shared/gc_globals.hpp"
 #include "gc/z/c2/zBarrierSetC2.hpp"
 
 const uint8_t AgnosticBarrierRequired    = 1;
-const uint8_t AgnosticBarrierNokeepalive = 2;
-const uint8_t AgnosticBarrierNative      = 4;
-const uint8_t AgnosticBarrierElided      = 8;
+const uint8_t AgnosticBarrierNokeepalive = ZBarrierNoKeepalive;
+const uint8_t AgnosticBarrierNative      = ZBarrierNative;
+const uint8_t AgnosticBarrierElided      = ZBarrierElided;
+
+class AgnosticBarrierSetC2Logic : public AllStatic {
+public:
+  static void determine_barrier_data(C2Access& access);
+  static void eliminate_barrier_data(Node* node);
+};
+
+class AgnosticZBarrierSetC2 : public ZBarrierSetC2 {
+protected:
+  virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const {
+    if (UseAgnosticBarriers) {
+      AgnosticBarrierSetC2Logic::determine_barrier_data(access);
+      return BarrierSetC2::store_at_resolved(access, val);
+    }
+    return ZBarrierSetC2::store_at_resolved(access, val);
+  }
+
+  virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
+    eliminate_gc_barrier_data(node);
+  }
+
+  virtual void eliminate_gc_barrier_data(Node* node) const {
+    AgnosticBarrierSetC2Logic::eliminate_barrier_data(node);
+  }
+
+  virtual void late_barrier_analysis() const {
+    compute_liveness_at_stubs();
+  }
+};
+
+class AgnosticG1BarrierSetC2 : public G1BarrierSetC2 {
+protected:
+  virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const {
+    if (UseAgnosticBarriers) {
+      AgnosticBarrierSetC2Logic::determine_barrier_data(access);
+      return BarrierSetC2::store_at_resolved(access, val);
+    }
+    return G1BarrierSetC2::store_at_resolved(access, val);
+  }
+
+  virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
+    eliminate_gc_barrier_data(node);
+  }
+
+  virtual void eliminate_gc_barrier_data(Node* node) const {
+    AgnosticBarrierSetC2Logic::eliminate_barrier_data(node);
+  }
+};
+
+class AgnosticCardTableBarrierSetC2 : public CardTableBarrierSetC2 {
+protected:
+  virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const {
+    if (UseAgnosticBarriers) {
+      AgnosticBarrierSetC2Logic::determine_barrier_data(access);
+      return BarrierSetC2::store_at_resolved(access, val);
+    }
+    return CardTableBarrierSetC2::store_at_resolved(access, val);
+  }
+
+  virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
+    eliminate_gc_barrier_data(node);
+  }
+
+  virtual void eliminate_gc_barrier_data(Node* node) const {
+    AgnosticBarrierSetC2Logic::eliminate_barrier_data(node);
+  }
+
+  void* create_barrier_state(Arena* comp_arena) const;
+  virtual void emit_stubs(CodeBuffer& cb) const;
+};
 
 class AgnosticStoreBarrierStubC2 : public BarrierStubC2 {
 private:
@@ -52,10 +123,10 @@ protected:
 public:
   static AgnosticStoreBarrierStubC2* create(const MachNode* node, bool is_atomic, bool is_native, bool is_nokeepalive);
   void initialize_registers(Register src,
-                            Register dst,
-                            Register aux,
-                            Register tmp1,
-                            Register tmp2);
+      Register dst,
+      Register aux,
+      Register tmp1,
+      Register tmp2);
 
   Register src() const;
   Register dst() const;
@@ -72,16 +143,60 @@ public:
 
 // AgnosticBarrierSetC2 is an experimental universal barrier for all supported GC barriers for C2.
 // This specialized barrier set is generated using the -XX:+UseAgnosticBarriers feature flag.
-class AgnosticBarrierSetC2 : public CardTableBarrierSetC2 {
-protected:
-  virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
+// class AgnosticBarrierSetC2 : public CardTableBarrierSetC2 {
+// protected:
+//   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
+// 
+// public:
+//   virtual void* create_barrier_state(Arena* comp_arena) const;
+//   virtual void emit_stubs(CodeBuffer& cb) const;
+//   virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
+//   virtual void eliminate_gc_barrier_data(Node* node) const;
+//   virtual void late_barrier_analysis() const;
+// };
+
+class AgnosticBarrierSetC2State : public BarrierSetC2State {
+private:
+  GrowableArray<BarrierStubC2*>* _stubs;
+  int                            _trampoline_stubs_count;
+  int                            _stubs_start_offset;
 
 public:
-  virtual void* create_barrier_state(Arena* comp_arena) const;
-  virtual void emit_stubs(CodeBuffer& cb) const;
-  virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
-  virtual void eliminate_gc_barrier_data(Node* node) const;
-  virtual void late_barrier_analysis() const;
+  AgnosticBarrierSetC2State(Arena* arena)
+    : BarrierSetC2State(arena),
+    _stubs(new (arena) GrowableArray<BarrierStubC2*>(arena, 8,  0, nullptr)),
+    _trampoline_stubs_count(0),
+    _stubs_start_offset(0) {}
+
+  GrowableArray<BarrierStubC2*>* stubs() {
+    return _stubs;
+  }
+
+  bool needs_liveness_data(const MachNode* mach) const {
+    return mach->barrier_data() != AgnosticBarrierElided;
+  }
+
+  bool needs_livein_data() const {
+    // TODO: ZGC needs live-in data but G1 does not
+    return true;
+  }
+
+  void inc_trampoline_stubs_count() {
+    assert(_trampoline_stubs_count != INT_MAX, "Overflow");
+    ++_trampoline_stubs_count;
+  }
+
+  int trampoline_stubs_count() {
+    return _trampoline_stubs_count;
+  }
+
+  void set_stubs_start_offset(int offset) {
+    _stubs_start_offset = offset;
+  }
+
+  int stubs_start_offset() {
+    return _stubs_start_offset;
+  }
 };
 
 #endif // SHARE_GC_AGNOSTIC_C2_AGNOSTICBARRIERSETC2_HPP

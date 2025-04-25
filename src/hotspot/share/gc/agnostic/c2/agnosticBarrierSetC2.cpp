@@ -38,58 +38,7 @@
 #include "opto/regalloc.hpp"
 #include "utilities/growableArray.hpp"
 
-class AgnosticBarrierSetC2State : public BarrierSetC2State {
-private:
-  GrowableArray<BarrierStubC2*>* _stubs;
-  int                            _trampoline_stubs_count;
-  int                            _stubs_start_offset;
-
-public:
-  AgnosticBarrierSetC2State(Arena* arena)
-    : BarrierSetC2State(arena),
-    _stubs(new (arena) GrowableArray<BarrierStubC2*>(arena, 8,  0, nullptr)),
-    _trampoline_stubs_count(0),
-    _stubs_start_offset(0) {}
-
-  GrowableArray<BarrierStubC2*>* stubs() {
-    return _stubs;
-  }
-
-  bool needs_liveness_data(const MachNode* mach) const {
-    return mach->barrier_data() != AgnosticBarrierElided;
-  }
-
-  bool needs_livein_data() const {
-    // TODO: ZGC needs live-in data but G1 does not
-    return true;
-  }
-
-  void inc_trampoline_stubs_count() {
-    assert(_trampoline_stubs_count != INT_MAX, "Overflow");
-    ++_trampoline_stubs_count;
-  }
-
-  int trampoline_stubs_count() {
-    return _trampoline_stubs_count;
-  }
-
-  void set_stubs_start_offset(int offset) {
-    _stubs_start_offset = offset;
-  }
-
-  int stubs_start_offset() {
-    return _stubs_start_offset;
-  }
-};
-
-static AgnosticBarrierSetC2State* barrier_set_state() {
-  return reinterpret_cast<AgnosticBarrierSetC2State*>(Compile::current()->barrier_set_state());
-}
-
-// Important properties to consider for stores:
-// 1. Uninitialized oop or initialized oop (if initialized we should use SATB, if not we don’t)
-// 2. In heap or not in heap (if in the heap we need to do remset maintenance, otherwise we don’t)
-Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) const {
+void AgnosticBarrierSetC2Logic::determine_barrier_data(C2Access& access) {
   DecoratorSet decorators = access.decorators();
   bool anonymous = (decorators & ON_UNKNOWN_OOP_REF) != 0;
   bool is_dest_uninitialized = (decorators & IS_DEST_UNINITIALIZED) != 0;
@@ -105,36 +54,9 @@ Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& v
     }
     access.set_barrier_data(barrier_data);
   }
-
-  return BarrierSetC2::store_at_resolved(access, val);
 }
 
-void* AgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
-  return new (comp_arena) AgnosticBarrierSetC2State(comp_arena);
-}
-
-void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
-  MacroAssembler masm(&cb);
-  GrowableArray<BarrierStubC2*>* const stubs = barrier_set_state()->stubs();
-  barrier_set_state()->set_stubs_start_offset(masm.offset());
-
-  for (int i = 0; i < stubs->length(); i++) {
-    // Make sure there is enough space in the code buffer
-    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::MAX_inst_size) && cb.blob() == nullptr) {
-      ciEnv::current()->record_failure("CodeCache is full");
-      return;
-    }
-    stubs->at(i)->emit_code(masm);
-  }
-
-  masm.flush();
-}
-
-void AgnosticBarrierSetC2::eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
-  eliminate_gc_barrier_data(node);
-}
-
-void AgnosticBarrierSetC2::eliminate_gc_barrier_data(Node* node) const {
+void AgnosticBarrierSetC2Logic::eliminate_barrier_data(Node* node) {
   if (node->is_LoadStore()) {
     LoadStoreNode* loadstore = node->as_LoadStore();
     loadstore->set_barrier_data(AgnosticBarrierElided);
@@ -144,8 +66,28 @@ void AgnosticBarrierSetC2::eliminate_gc_barrier_data(Node* node) const {
   }
 }
 
-void AgnosticBarrierSetC2::late_barrier_analysis() const {
-  compute_liveness_at_stubs();
+static AgnosticBarrierSetC2State* barrier_set_state() {
+  return reinterpret_cast<AgnosticBarrierSetC2State*>(Compile::current()->barrier_set_state());
+}
+
+void* AgnosticCardTableBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
+  return new (comp_arena) AgnosticBarrierSetC2State(comp_arena);
+}
+
+// Emit stubs for Serial & Parallel collectors
+void AgnosticCardTableBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
+  MacroAssembler masm(&cb);
+  GrowableArray<BarrierStubC2*>* const stubs = barrier_set_state()->stubs();
+  barrier_set_state()->set_stubs_start_offset(masm.offset());
+  for (int i = 0; i < stubs->length(); i++) {
+    // Make sure there is enough space in the code buffer
+    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::MAX_inst_size) && cb.blob() == nullptr) {
+      ciEnv::current()->record_failure("CodeCache is full");
+      return;
+    }
+    stubs->at(i)->emit_code(masm);
+  }
+  masm.flush();
 }
 
 void AgnosticStoreBarrierStubC2::emit_code(MacroAssembler& masm) {

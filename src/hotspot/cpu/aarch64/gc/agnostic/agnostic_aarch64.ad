@@ -135,8 +135,8 @@ instruct agnosticStoreN(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNoSp tmp2,
                       $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
-    __ strw($src$$Register, $mem$$Register);
-    __ decode_heap_oop($tmp1$$Register, $src$$Register);
+    __ strw($tmp1$$Register, $mem$$Register);
+    __ decode_heap_oop($tmp1$$Register, $tmp1$$Register);
     __ block_comment("=== agnosticStoreN END ===");
   %}
   ins_pipe(istore_reg_mem);
@@ -159,8 +159,8 @@ instruct agnosticStoreNVolatile(indirect mem, iRegN src, iRegPNoSp tmp1, iRegPNo
                       $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
-    __ stlrw($src$$Register, $mem$$Register);
-    __ decode_heap_oop($tmp1$$Register, $src$$Register);
+    __ stlrw($tmp1$$Register, $mem$$Register);
+    __ decode_heap_oop($tmp1$$Register, $tmp1$$Register);
     __ block_comment("=== agnosticStoreNVolatile END ===");
   %}
   ins_pipe(pipe_class_memory);
@@ -184,7 +184,7 @@ instruct agnosticEncodePAndStoreN(indirect mem, iRegP src, iRegPNoSp tmp1, iRegP
                       $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
-    __ encode_heap_oop($tmp1$$Register, $src$$Register);
+    __ encode_heap_oop($tmp1$$Register, $tmp1$$Register);
     __ strw($tmp1$$Register, $mem$$Register);
     __ block_comment("=== agnosticEncodePAndStoreN END ===");
   %}
@@ -209,7 +209,7 @@ instruct agnosticEncodePAndStoreNVolatile(indirect mem, iRegP src, iRegPNoSp tmp
                       $tmp3$$Register   /* g1:tmp2                      */,
                       false             /* is_atomic */,
                       RegSet::of($mem$$Register, $src$$Register) /* preserve */);
-    __ encode_heap_oop($tmp1$$Register, $src$$Register);
+    __ encode_heap_oop($tmp1$$Register, $tmp1$$Register);
     __ stlrw($tmp1$$Register, $mem$$Register);
     __ block_comment("=== agnosticEncodePAndStoreNVolatile END ===");
   %}

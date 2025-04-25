@@ -68,8 +68,6 @@ static void buffer_store(MacroAssembler* masm, Address ref_addr, Register tmp1, 
 
   // Check if the buffer is full. ANTODO: compare and branch optimization
   __ ldr(tmp2, Address(tmp1, AgnosticStoreBarrierBuffer::current_offset()));
-  // __ cmp(tmp2, (uint8_t)0);
-  // __ br(Assembler::EQ, slow_path);
   __ cbz(tmp2, slow_path);
 
   // Bump the pointer

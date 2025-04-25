@@ -21,6 +21,7 @@
  * questions.
  */
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "precompiled.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
 #include "code/nmethod.hpp"
@@ -440,6 +441,9 @@ public:
     // Setup GC id and active marker
     GCIdMark gc_id_mark(_gc_id);
     IsSTWGCActiveMark gc_active_mark;
+
+    ZAgnosticBarrierSetFlush closure;
+    Threads::java_threads_do(&closure);
 
     // Verify before operation
     ZVerify::before_zoperation();

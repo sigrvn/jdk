@@ -26,35 +26,13 @@
 #include "gc/g1/c2/g1BarrierSetC2.hpp"
 #include "gc/shared/agnosticBarrierSetAssembler.hpp"
 #include "gc/shared/c2/modRefBarrierSetC2.hpp"
+#include "gc/shared/gc_globals.hpp"
 #include "gc/z/c2/zBarrierSetC2.hpp"
 #include "opto/output.hpp"
 #include <cstdio>
 
 
-class AgnosticBarrierSetC2State : public BarrierSetC2State {
-private:
-  GrowableArray<AgnosticBarrierStubC2*>* _stubs;
-
-public:
-  AgnosticBarrierSetC2State(Arena* arena)
-    : BarrierSetC2State(arena),
-      _stubs(new (arena) GrowableArray<AgnosticBarrierStubC2*>(arena, 8,  0, nullptr)) {}
-
-  GrowableArray<AgnosticBarrierStubC2*>* stubs() {
-    return _stubs;
-  }
-
-  bool needs_liveness_data(const MachNode* mach) const {
-    // Don't need liveness data for nodes without barriers
-    return mach->barrier_data() != ZBarrierElided;
-  }
-
-  bool needs_livein_data() const {
-    return true;
-  }
-};
-
-Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) const {
+void AgnosticBarrierSetC2Logic::write_barrier_data(C2Access& access) {
   DecoratorSet decorators = access.decorators();
 
   const TypePtr* adr_type = access.addr().type();
@@ -67,45 +45,21 @@ Node* AgnosticBarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& v
   bool tightly_coupled_alloc = (decorators & C2_TIGHTLY_COUPLED_ALLOC) != 0;
 
   if (!access.is_oop() || (!in_heap && !anonymous)) {
-    return BarrierSetC2::store_at_resolved(access, val);
+    return;
   }
-
+  
   if (tightly_coupled_alloc) {
     access.set_barrier_data(AgnosticElided);
   } else {
     access.set_barrier_data(AgnosticBarrier);
   }
-
-  return BarrierSetC2::store_at_resolved(access, val);
 }
 
-void AgnosticBarrierSetC2::late_barrier_analysis() const {
-  compute_liveness_at_stubs();
-}
-
-void* AgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
+void* AgnosticBarrierSetC2Logic::create_barrier_state(Arena* comp_arena) {
   return new (comp_arena) AgnosticBarrierSetC2State(comp_arena);
 }
 
-void AgnosticBarrierSetC2::eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
-  eliminate_gc_barrier_data(node);
-}
-
-void AgnosticBarrierSetC2::eliminate_gc_barrier_data(Node* node) const {
-  if (node->is_LoadStore()) {
-    LoadStoreNode* loadstore = node->as_LoadStore();
-    loadstore->set_barrier_data(AgnosticElided);
-  } else if (node->is_Mem()) {
-    MemNode* mem = node->as_Mem();
-    mem->set_barrier_data(AgnosticElided);
-  }
-}
-
-static AgnosticBarrierSetC2State* barrier_set_state() {
-  return reinterpret_cast<AgnosticBarrierSetC2State*>(Compile::current()->barrier_set_state());
-}
-
-void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
+void AgnosticBarrierSetC2Logic::emit_stubs(CodeBuffer& cb) {
   MacroAssembler masm(&cb);
   GrowableArray<AgnosticBarrierStubC2*>* const stubs = barrier_set_state()->stubs();
 
@@ -122,10 +76,131 @@ void AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   masm.flush();
 }
 
+void AgnosticBarrierSetC2Logic::eliminate_gc_barrier_data(Node* node) {
+  if (node->is_LoadStore()) {
+    LoadStoreNode* loadstore = node->as_LoadStore();
+    loadstore->set_barrier_data(AgnosticElided);
+  } else if (node->is_Mem()) {
+    MemNode* mem = node->as_Mem();
+    mem->set_barrier_data(AgnosticElided);
+  }
+}
+
+AgnosticBarrierSetC2State* AgnosticBarrierSetC2Logic::barrier_set_state() {
+  return reinterpret_cast<AgnosticBarrierSetC2State*>(Compile::current()->barrier_set_state());
+}
+
+void* ZAgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
+  if (GCASB) {
+    return AgnosticBarrierSetC2Logic::create_barrier_state(comp_arena);
+  }
+  return ZBarrierSetC2::create_barrier_state(comp_arena);
+}
+
+void ZAgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::emit_stubs(cb);
+    return;
+  }
+  ZBarrierSetC2::emit_stubs(cb);
+}
+
+void ZAgnosticBarrierSetC2::eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::eliminate_gc_barrier_data(node);
+    return;
+  }
+  ZBarrierSetC2::eliminate_gc_barrier(macro, node);
+}
+
+void ZAgnosticBarrierSetC2::eliminate_gc_barrier_data(Node* node) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::eliminate_gc_barrier_data(node);
+    return;
+  }
+  ZBarrierSetC2::eliminate_gc_barrier_data(node);
+}
+
+void ZAgnosticBarrierSetC2::late_barrier_analysis() const {
+  compute_liveness_at_stubs();
+}
+
+void* G1AgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
+  if (GCASB) {
+    return AgnosticBarrierSetC2Logic::create_barrier_state(comp_arena);
+  }
+  return G1BarrierSetC2::create_barrier_state(comp_arena);
+}
+
+void G1AgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::emit_stubs(cb);
+    return;
+  }
+  G1BarrierSetC2::emit_stubs(cb);
+}
+
+void G1AgnosticBarrierSetC2::eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::eliminate_gc_barrier_data(node);
+    return;
+  }
+  G1BarrierSetC2::eliminate_gc_barrier(macro, node);
+}
+
+void G1AgnosticBarrierSetC2::eliminate_gc_barrier_data(Node* node) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::eliminate_gc_barrier_data(node);
+    return;
+  }
+  G1BarrierSetC2::eliminate_gc_barrier_data(node);
+}
+
+void G1AgnosticBarrierSetC2::late_barrier_analysis() const {
+  compute_liveness_at_stubs();
+}
+
+void* CardTableAgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
+  if (GCASB) {
+    return AgnosticBarrierSetC2Logic::create_barrier_state(comp_arena);
+  }
+  return CardTableBarrierSetC2::create_barrier_state(comp_arena);
+}
+
+void CardTableAgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::emit_stubs(cb);
+    return;
+  }
+  CardTableBarrierSetC2::emit_stubs(cb);
+}
+
+void CardTableAgnosticBarrierSetC2::eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::eliminate_gc_barrier_data(node);
+    return;
+  }
+  CardTableBarrierSetC2::eliminate_gc_barrier(macro, node);
+}
+
+void CardTableAgnosticBarrierSetC2::eliminate_gc_barrier_data(Node* node) const {
+  if (GCASB) {
+    AgnosticBarrierSetC2Logic::eliminate_gc_barrier_data(node);
+    return;
+  }
+  CardTableBarrierSetC2::eliminate_gc_barrier_data(node);
+}
+
+void CardTableAgnosticBarrierSetC2::late_barrier_analysis() const {
+  if (GCASB) {
+    compute_liveness_at_stubs();
+  }
+}
+
 AgnosticStoreBarrierStubC2* AgnosticStoreBarrierStubC2::create(const MachNode* node, Address ref_addr) {
   AgnosticStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) AgnosticStoreBarrierStubC2(node, ref_addr);
   if (!Compile::current()->output()->in_scratch_emit_size()) {
-    barrier_set_state()->stubs()->append(stub);
+    AgnosticBarrierSetC2Logic::barrier_set_state()->stubs()->append(stub);
   }
 
   return stub;

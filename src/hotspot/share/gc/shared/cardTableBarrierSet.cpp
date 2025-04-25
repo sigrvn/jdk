@@ -69,7 +69,7 @@ CardTableBarrierSet::CardTableBarrierSet(BarrierSetAssembler* barrier_set_assemb
 CardTableBarrierSet::CardTableBarrierSet(CardTable* card_table) :
   ModRefBarrierSet(make_barrier_set_assembler<CardTableBarrierSetAssembler>(),
                    make_barrier_set_c1<CardTableBarrierSetC1>(),
-                   make_barrier_set_c2</* CardTableBarrierSetC2 */AgnosticBarrierSetC2>(),
+                   make_barrier_set_c2<CardTableAgnosticBarrierSetC2>(),
                    BarrierSet::FakeRtti(BarrierSet::CardTableBarrierSet)),
   _defer_initial_card_mark(false),
   _card_table(card_table)

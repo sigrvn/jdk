@@ -100,6 +100,11 @@ public:
   void verify_universe(const char* info) {
     if (VerifyBeforeExit) {
       log_info(cds)("Verify %s", info);
+
+      // Flush the agnostic barrier buffers
+      AgnosticBarrierSetFlush closure;
+      Threads::java_threads_do(&closure);
+
       // Among other things, this ensures that Eden top is correct.
       Universe::heap()->prepare_for_verify();
       Universe::verify(info);

@@ -193,6 +193,11 @@ void VMThread::run() {
 
   if (VerifyBeforeExit) {
     HandleMark hm(VMThread::vm_thread());
+
+    // Flush the agnostic barrier buffers
+    AgnosticBarrierSetFlush closure;
+    Threads::java_threads_do(&closure);
+
     // Among other things, this ensures that Eden top is correct.
     Universe::heap()->prepare_for_verify();
     // Silent verification so as not to pollute normal output,

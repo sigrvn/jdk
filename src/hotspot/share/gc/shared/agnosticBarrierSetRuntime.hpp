@@ -33,12 +33,17 @@
 #include "gc/g1/g1ThreadLocalData.hpp"
 #include "gc/serial/serialHeap.hpp"
 #include "gc/parallel/parallelScavengeHeap.hpp"
+#include "gc/z/zStoreBarrierBuffer.hpp"
+#include "gc/z/zThreadLocalAllocBuffer.hpp"
+#include "gc/z/zThreadLocalData.hpp"
 #include "memory/allStatic.hpp"
+#include "memory/universe.hpp"
 #include "oops/accessDecorators.hpp"
 #include "oops/oop.hpp"
 #include "oops/oopsHierarchy.hpp"
 #include "runtime/javaThread.hpp"
 #include "runtime/threads.hpp"
+#include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 
 class AgnosticBarrierSetRuntime : public AllStatic {
@@ -77,31 +82,87 @@ public:
 };
 
 class CardTableAgnosticBarrierSetFlush : public ThreadClosure {
-  public:
-    virtual void do_thread(Thread* thread) {
-      CardTable::CardValue* table;
-      if (Universe::heap()->kind() == CollectedHeap::Serial) {
-        table = SerialHeap::heap()->rem_set()->byte_map_base();
-      } else {
-        assert(Universe::heap()->kind() == CollectedHeap::Parallel, "must be");
-        table = ParallelScavengeHeap::heap()->card_table()->byte_map_base();
-      }
-      assert((uint64_t)((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base()==(uint64_t)table, "sanity check");
-      
-      AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+public:
+  virtual void do_thread(Thread* thread) {
+    CardTable::CardValue* table;
+    if (Universe::heap()->kind() == CollectedHeap::Serial) {
+      table = SerialHeap::heap()->rem_set()->byte_map_base();
+    } else {
+      assert(Universe::heap()->kind() == CollectedHeap::Parallel, "must be");
+      table = ParallelScavengeHeap::heap()->card_table()->byte_map_base();
+    }
+    assert((uint64_t)((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base()==(uint64_t)table, "sanity check");
+    
+    AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
 
-      // Flush the buffer
-      while (buffer->is_empty() == false) {
-        AgnosticStoreBarrierEntry* entry = buffer->pop();
-        oopDesc* pre_val = entry->_prev;
-        oopDesc* ref_addr = entry->_p;
-        assert(ref_addr != nullptr, "must be");
+    // Flush the buffer
+    while (buffer->is_empty() == false) {
+      AgnosticStoreBarrierEntry* entry = buffer->pop();
+      oopDesc* pre_val = entry->_prev;
+      oopDesc* ref_addr = entry->_p;
+      assert(ref_addr != nullptr, "must be");
 
-        // CT
-        CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
-        *result = CardTable::dirty_card_val();
+      // CT
+      CardTable::CardValue* result = &table[uintptr_t(ref_addr) >> CardTable::card_shift()];
+      *result = CardTable::dirty_card_val();
+    }
+  }
+};
+
+class ZAgnosticBarrierSetFlush : public ThreadClosure {
+public:
+  virtual void do_thread(Thread* thread) {
+    ZStoreBarrierBuffer* zbuffer = ZThreadLocalData::store_barrier_buffer(thread);
+    AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
+
+    // Flush the buffer
+    while (buffer->is_empty() == false) {
+      AgnosticStoreBarrierEntry* entry = buffer->pop();
+      oopDesc* pre_val = entry->_prev;
+      oopDesc* ref_addr = entry->_p;
+      assert(ref_addr != nullptr, "must be");
+
+      if (ZPointer::is_store_bad(static_cast<zpointer>((uintptr_t)pre_val))) {
+        zbuffer->add((zpointer *)ref_addr, static_cast<zpointer>((uintptr_t)pre_val));
       }
     }
-  };
+  }
+};
+
+class AgnosticBarrierSetFlush : public ThreadClosure {
+public:
+  virtual void do_thread(Thread* thread) {
+    // There's nothing to do if we are not using agnostic barriers
+    if (GCASB == false) return;
+
+    // Le funk!
+    switch (Universe::heap()->kind()) {
+    case CollectedHeap::Serial:
+    case CollectedHeap::Parallel:
+      {
+        CardTableAgnosticBarrierSetFlush closure;
+        closure.do_thread(thread);
+      }
+      break;
+    case CollectedHeap::G1:
+      {
+        G1AgnosticBarrierSetFlush closure;
+        closure.do_thread(thread);
+      }
+      break;
+    case CollectedHeap::Z:
+    {
+      ZAgnosticBarrierSetFlush closure;
+      closure.do_thread(thread);
+    }
+      break;
+    case CollectedHeap::None:
+    case CollectedHeap::Epsilon:
+    case CollectedHeap::Shenandoah:
+      ShouldNotReachHere();
+      break;
+    }
+  }
+};
 
 #endif // SHARE_GC_SHARED_AGNOSTICBARRIERSETRUNTIME_HPP

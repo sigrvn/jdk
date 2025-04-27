@@ -52,6 +52,11 @@ bool VM_G1CollectFull::skip_operation() const {
 void VM_G1CollectFull::doit() {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   GCCauseSetter x(g1h, _gc_cause);
+
+  // Flush the thread-local barrier buffers
+  G1AgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
+
   _gc_succeeded = g1h->do_full_collection(false /* clear_all_soft_refs */,
                                           false /* do_maximal_compaction */);
 }

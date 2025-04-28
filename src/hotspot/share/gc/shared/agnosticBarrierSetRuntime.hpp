@@ -34,6 +34,7 @@
 #include "gc/serial/serialHeap.hpp"
 #include "gc/parallel/parallelScavengeHeap.hpp"
 #include "gc/z/zStoreBarrierBuffer.hpp"
+#include "gc/z/zStoreBarrierBuffer.inline.hpp"
 #include "gc/z/zThreadLocalAllocBuffer.hpp"
 #include "gc/z/zThreadLocalData.hpp"
 #include "memory/allStatic.hpp"

@@ -33,6 +33,7 @@
 #include "gc/shared/cardTable.hpp"
 #include "gc/z/c2/zBarrierSetC2.hpp"
 #include "gc/z/zStoreBarrierBuffer.hpp"
+#include "gc/z/zStoreBarrierBuffer.inline.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
 #include "oops/compressedOops.hpp"
@@ -43,9 +44,7 @@
 #include "runtime/interfaceSupport.inline.hpp"
 #include "runtime/javaThread.hpp"
 #include "utilities/debug.hpp"
-#include <cstddef>
 #include <cstdint>
-#include <cstdio>
 
 void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread) {
   SATBMarkQueue& queue = G1ThreadLocalData::satb_mark_queue(thread);

@@ -38,6 +38,7 @@
 #include "memory/universe.hpp"
 #include "oops/compressedOops.hpp"
 #include "oops/oop.hpp"
+#include "oops/oopsHierarchy.hpp"
 #include "precompiled.hpp"
 #include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "oops/access.hpp"
@@ -45,6 +46,16 @@
 #include "runtime/javaThread.hpp"
 #include "utilities/debug.hpp"
 #include <cstdint>
+
+oopDesc* load_oop_atomic(oopDesc* oop) {
+  // Ugly stuff, don't look much...
+  oopDesc** orig_oop = reinterpret_cast<oopDesc**>((uintptr_t)oop);
+  oopDesc* pre_val = Atomic::load(orig_oop);
+  if (UseCompressedOops) {
+    pre_val = CompressedOops::decode(static_cast<narrowOop>((uintptr_t)pre_val));
+  }
+  return pre_val;
+}
 
 void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread) {
   SATBMarkQueue& queue = G1ThreadLocalData::satb_mark_queue(thread);
@@ -69,7 +80,7 @@ void AgnosticBarrierSetRuntime::g1_slow_path(oopDesc* oop, Thread* thread) {
   }
 
   // Deal with the last item that we could not buffer
-  oopDesc* pre_val = oop->obj_field_acquire(0);
+  oopDesc* pre_val = load_oop_atomic(oop);
 
   // SATB
   if (pre_val != nullptr && queue.is_active()) {

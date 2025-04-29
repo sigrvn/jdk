@@ -93,7 +93,7 @@ protected:
       AgnosticBarrierSetC2Logic::write_barrier_data(access);
       return BarrierSetC2::store_at_resolved(access, val);
     }
-    return BarrierSetC2::store_at_resolved(access, val);
+    return CardTableBarrierSetC2::store_at_resolved(access, val);
   }
 
 public:

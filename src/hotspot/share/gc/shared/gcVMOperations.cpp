@@ -22,6 +22,7 @@
  *
  */
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "precompiled.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/javaClasses.hpp"
@@ -59,6 +60,10 @@ void VM_GC_Sync_Operation::doit_epilogue() {
 }
 
 void VM_Verify::doit() {
+  // Flush the thread-local barrier buffers
+  AgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
+  
   Universe::heap()->prepare_for_verify();
   Universe::verify();
 }
@@ -163,6 +168,10 @@ bool VM_GC_HeapInspection::collect() {
 }
 
 void VM_GC_HeapInspection::doit() {
+  // Flush the barrier buffers
+  AgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
+
   Universe::heap()->ensure_parsability(false); // must happen, even if collection does
                                                // not happen (e.g. due to GCLocker)
                                                // or _full_gc being false
@@ -211,6 +220,10 @@ void VM_CollectForMetadataAllocation::doit() {
 
   CollectedHeap* heap = Universe::heap();
   GCCauseSetter gccs(heap, _gc_cause);
+
+  // Flush the barrier buffers
+  AgnosticBarrierSetFlush closure;
+  Threads::java_threads_do(&closure);
 
   // Check again if the space is available.  Another thread
   // may have similarly failed a metadata allocation and induced

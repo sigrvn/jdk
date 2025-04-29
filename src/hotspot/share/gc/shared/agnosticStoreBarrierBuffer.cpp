@@ -52,16 +52,7 @@ ByteSize AgnosticStoreBarrierBuffer::current_offset() {
 
 AgnosticStoreBarrierBuffer::AgnosticStoreBarrierBuffer()
   : _buffer(),
-    _last_processed_color(),
-    _last_installed_color(),
-    _base_pointer_lock(),
-    _base_pointers(),
-    _current(ZBufferStoreBarriers ? BufferSizeBytes : 0) {}
-
-void AgnosticStoreBarrierBuffer::initialize() {
-  _last_processed_color = ZPointerStoreGoodMask;
-  _last_installed_color = ZPointerStoreGoodMask;
-}
+    _current(BufferSizeBytes) {}
 
 void AgnosticStoreBarrierBuffer::clear() {
   _current = BufferSizeBytes;
@@ -74,51 +65,4 @@ bool AgnosticStoreBarrierBuffer::is_empty() const {
 AgnosticStoreBarrierEntry* AgnosticStoreBarrierBuffer::pop() {
   _current += sizeof(AgnosticStoreBarrierEntry);
   return &_buffer[current() - 1];
-}
-
-void AgnosticStoreBarrierBuffer::flush() {
-  if (!ZBufferStoreBarriers) {
-    return;
-  }
-
-  for (size_t i = current(); i < BufferLength; ++i) {
-    const AgnosticStoreBarrierEntry& entry = _buffer[i];
-    //const zaddress addr = ZBarrier::make_load_good(entry._prev);
-    //ZBarrier::mark_and_remember(entry._p, addr);
-  }
-
-  clear();
-}
-
-bool AgnosticStoreBarrierBuffer::is_in(volatile zpointer* p) {
-  if (!ZBufferStoreBarriers) {
-    return false;
-  }
-
-  // for (JavaThreadIteratorWithHandle jtiwh; JavaThread * const jt = jtiwh.next(); ) {
-  //   AgnosticStoreBarrierBuffer* const buffer = AgnosticThreadLocalData::store_barrier_buffer(jt);
-
-  //   const uintptr_t  last_remap_bits = ZPointer::remap_bits(buffer->_last_processed_color) & ZPointerRemappedMask;
-  //   const bool needs_remap = last_remap_bits != ZPointerRemapped;
-
-  //   for (size_t i = buffer->current(); i < BufferLength; ++i) {
-  //     const ZStoreBarrierEntry& entry = buffer->_buffer[i];
-  //     volatile zpointer* entry_p = entry._p;
-
-  //     // Potentially remap p
-  //     if (needs_remap) {
-  //       const zaddress_unsafe entry_p_base = buffer->_base_pointers[i];
-  //       if (!is_null(entry_p_base)) {
-  //         entry_p = make_load_good(entry_p, entry_p_base, buffer->_last_processed_color);
-  //       }
-  //     }
-
-  //     // Check if p matches
-  //     if (entry_p == p) {
-  //       return true;
-  //     }
-  //   }
-  // }
-
-  return false;
 }

@@ -34,26 +34,4 @@ inline size_t AgnosticStoreBarrierBuffer::current() const {
   return _current / sizeof(AgnosticStoreBarrierEntry);
 }
 
-// inline void AgnosticStoreBarrierBuffer::add(volatile zpointer* p, zpointer prev) {
-//   if (_current == 0) {
-//     flush();
-//   }
-//   _current -= sizeof(AgnosticStoreBarrierEntry);
-//   _buffer[current()] = {p, prev};
-// }
-
-inline AgnosticStoreBarrierBuffer* AgnosticStoreBarrierBuffer::buffer_for_store(bool heal) {
-  if (heal) {
-    return nullptr;
-  }
-
-  Thread* const thread = Thread::current();
-  if (!thread->is_Java_thread()) {
-    return nullptr;
-  }
-
-  //AgnosticStoreBarrierBuffer* const buffer = AgnosticThreadLocalData::store_barrier_buffer(JavaThread::cast(thread));
-  return nullptr;// buffer;
-}
-
 #endif // SHARE_GC_SHARED_AGNOSTICSTOREBARRIERBUFFER_INLINE_HPP

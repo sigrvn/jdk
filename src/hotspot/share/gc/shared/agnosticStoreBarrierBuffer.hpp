@@ -46,26 +46,14 @@ private:
 
   AgnosticStoreBarrierEntry _buffer[BufferLength];
 
-  // Color from previous phase this buffer was processed
-  uintptr_t          _last_processed_color;
-
-  // Use as a claim mechanism for installing base pointers
-  uintptr_t          _last_installed_color;
-
-  ZLock              _base_pointer_lock;
-  zaddress_unsafe    _base_pointers[BufferLength];
-
-  // sizeof(ZStoreBarrierEntry) scaled index growing downwards
+  // sizeof(AgnosticStoreBarrierEntry) scaled index growing downwards
   size_t             _current;
 
   void clear();
 
   size_t current() const;
   
-  void on_error(outputStream* st);
-  class OnError;
-  
-  public:
+public:
   AgnosticStoreBarrierBuffer();
   
   static ByteSize buffer_offset();
@@ -73,16 +61,6 @@ private:
   
   bool is_empty() const;
   AgnosticStoreBarrierEntry* pop();
-
-  static AgnosticStoreBarrierBuffer* buffer_for_store(bool heal);
-
-  void initialize();
-
-  void flush();
-  void add(volatile zpointer* p, zpointer prev);
-
-  // Check if p is contained in any store barrier buffer entry in the system
-  static bool is_in(volatile zpointer* p);
 };
 
 #endif // SHARE_GC_SHARED_AGNOSTICSTOREBARRIERBUFFER_HPP

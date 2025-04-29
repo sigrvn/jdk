@@ -30,10 +30,11 @@
 #include "gc/shared/gc_globals.hpp"
 #include "gc/z/c2/zBarrierSetC2.hpp"
 
-const uint8_t AgnosticBarrierRequired    = 1;
-const uint8_t AgnosticBarrierNokeepalive = ZBarrierNoKeepalive;
-const uint8_t AgnosticBarrierNative      = ZBarrierNative;
-const uint8_t AgnosticBarrierElided      = ZBarrierElided;
+const uint8_t AgnosticBarrierSATB        = G1C2BarrierPre; // 1
+const uint8_t AgnosticBarrierCardMark    = G1C2BarrierPost; // 2
+const uint8_t AgnosticBarrierNokeepalive = ZBarrierNoKeepalive; // 8
+const uint8_t AgnosticBarrierNative      = ZBarrierNative; // 16
+const uint8_t AgnosticBarrierElided      = ZBarrierElided; // 32
 
 class AgnosticBarrierSetC2Logic : public AllStatic {
 public:
@@ -140,20 +141,6 @@ public:
 
   virtual void emit_code(MacroAssembler& masm);
 };
-
-// AgnosticBarrierSetC2 is an experimental universal barrier for all supported GC barriers for C2.
-// This specialized barrier set is generated using the -XX:+UseAgnosticBarriers feature flag.
-// class AgnosticBarrierSetC2 : public CardTableBarrierSetC2 {
-// protected:
-//   virtual Node* store_at_resolved(C2Access& access, C2AccessValue& val) const;
-// 
-// public:
-//   virtual void* create_barrier_state(Arena* comp_arena) const;
-//   virtual void emit_stubs(CodeBuffer& cb) const;
-//   virtual void eliminate_gc_barrier(PhaseMacroExpand* macro, Node* node) const;
-//   virtual void eliminate_gc_barrier_data(Node* node) const;
-//   virtual void late_barrier_analysis() const;
-// };
 
 class AgnosticBarrierSetC2State : public BarrierSetC2State {
 private:

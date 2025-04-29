@@ -24,10 +24,10 @@
 #ifndef SHARE_GC_Z_ZBARRIERSETASSEMBLER_HPP
 #define SHARE_GC_Z_ZBARRIERSETASSEMBLER_HPP
 
-#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
+#include "gc/shared/barrierSetAssembler.hpp"
 #include "utilities/macros.hpp"
 
-class ZBarrierSetAssemblerBase : public AgnosticBarrierSetAssembler {
+class ZBarrierSetAssemblerBase : public BarrierSetAssembler {
 public:
   static Address load_bad_mask_from_thread(Register thread);
   static Address mark_bad_mask_from_thread(Register thread);

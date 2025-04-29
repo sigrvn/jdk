@@ -199,7 +199,9 @@ void SATBMarkQueueSet::set_active_all_threads(bool active, bool expected_active)
         queue.set_index(queue.current_capacity());
       }
       queue.set_active(_active);
-      AgnosticThreadLocalData::set_satb_condition(t, _active);
+      if (UseAgnosticBarriers) {
+        t->set_satb_condition(_active ? G1_SATB : 0);
+      }
     }
   } closure(this, active);
   Threads::threads_do(&closure);

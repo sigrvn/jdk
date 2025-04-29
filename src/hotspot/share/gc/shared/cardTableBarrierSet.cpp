@@ -28,7 +28,6 @@
 #include "gc/shared/cardTable.hpp"
 #include "gc/shared/cardTableBarrierSet.inline.hpp"
 #include "gc/shared/cardTableBarrierSetAssembler.hpp"
-#include "gc/shared/cardTableThreadLocalData.hpp"
 #include "gc/shared/collectedHeap.hpp"
 #include "gc/shared/space.hpp"
 #include "logging/log.hpp"
@@ -76,12 +75,9 @@ CardTableBarrierSet::CardTableBarrierSet(CardTable* card_table) :
 {}
 
 void CardTableBarrierSet::on_thread_create(Thread* thread) {
-  CardTableThreadLocalData::create(thread);
-  CardTableThreadLocalData::set_byte_map_base(thread, _card_table->byte_map_base());
-}
-
-void CardTableBarrierSet::on_thread_destroy(Thread* thread) {
-  CardTableThreadLocalData::destroy(thread);
+  if (!UseG1GC && UseAgnosticBarriers) {
+    thread->set_byte_map_base(reinterpret_cast<uintptr_t>(_card_table->byte_map_base()));
+  }
 }
 
 void CardTableBarrierSet::initialize() {

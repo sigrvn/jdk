@@ -71,7 +71,6 @@ public:
   }
 
   virtual void on_thread_create(Thread* thread);
-  virtual void on_thread_destroy(Thread* thread);
 
  public:
   // Record a reference update. Note that these versions are precise!

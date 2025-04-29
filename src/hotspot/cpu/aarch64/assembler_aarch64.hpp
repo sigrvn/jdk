@@ -229,6 +229,7 @@ public:
   static void spatch(address a, int msb, int lsb, int64_t val) {
     int nbits = msb - lsb + 1;
     int64_t chk = val >> (nbits - 1);
+    // printf("chk: %lld, val: %llx\n", chk, val);
     guarantee (chk == -1 || chk == 0, "Field too big for insn at " INTPTR_FORMAT, p2i(a));
     uint64_t uval = val;
     unsigned mask = checked_cast<unsigned>(right_n_bits(nbits));

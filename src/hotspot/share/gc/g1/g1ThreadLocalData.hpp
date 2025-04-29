@@ -28,16 +28,18 @@
 #include "gc/g1/g1CardTable.hpp"
 #include "gc/g1/g1CollectedHeap.hpp"
 #include "gc/g1/g1RegionPinCache.hpp"
-#include "gc/shared/cardTableThreadLocalData.hpp"
 #include "gc/shared/gc_globals.hpp"
 #include "gc/shared/satbMarkQueue.hpp"
 #include "runtime/javaThread.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
-class G1ThreadLocalData : public CardTableThreadLocalData {
+#define G1_SATB UINTPTR_MAX
+
+class G1ThreadLocalData {
 private:
   SATBMarkQueue _satb_mark_queue;
+  G1CardTable::CardValue* _byte_map_base;
 
   // Per-thread cache of pinned object count to reduce atomic operation traffic
   // due to region pinning. Holds the last region where the mutator pinned an
@@ -46,9 +48,8 @@ private:
 
   G1ThreadLocalData() :
       _satb_mark_queue(&G1BarrierSet::satb_mark_queue_set()),
+      _byte_map_base(G1CollectedHeap::heap()->card_table_base()),
       _pin_cache() {
-        _satb_base_address = reinterpret_cast<uintptr_t>(&satb_mark_queue);
-        _byte_map_base = G1CollectedHeap::heap()->card_table_base(); 
         assert(_byte_map_base != nullptr, "must be");
       }
 
@@ -64,6 +65,12 @@ private:
 public:
   static void create(Thread* thread) {
     new (data(thread)) G1ThreadLocalData();
+    if (UseAgnosticBarriers) {
+      SATBMarkQueue& satbq = data(thread)->_satb_mark_queue;
+      thread->set_satb_condition(satbq.is_active() ? G1_SATB : 0);
+      thread->set_satb_base_address(reinterpret_cast<uintptr_t>(&satbq));
+      thread->set_byte_map_base(reinterpret_cast<uintptr_t>(data(thread)->_byte_map_base));
+    }
   }
 
   static void destroy(Thread* thread) {
@@ -91,11 +98,14 @@ public:
   }
 
   static G1CardTable::CardValue* byte_map_base(Thread* thread) {
-    return static_cast<G1CardTable::CardValue*>(data(thread)->_byte_map_base);
+    return data(thread)->_byte_map_base;
   }
 
   static void set_byte_map_base(Thread* thread, G1CardTable::CardValue* new_byte_map_base) {
-    CardTableThreadLocalData::set_byte_map_base(thread, new_byte_map_base);
+    data(thread)->_byte_map_base = new_byte_map_base;
+    if (UseAgnosticBarriers) {
+      thread->set_byte_map_base(reinterpret_cast<uintptr_t>(new_byte_map_base));
+    }
   }
 
   static G1RegionPinCache& pin_count_cache(Thread* thread) {

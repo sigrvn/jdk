@@ -147,6 +147,11 @@ class Thread: public ThreadShadow {
   // Only GC and GC barrier code should access this data area.
   GCThreadLocalData _gc_data;
 
+  // Thread local data for GC-agnosticity to support the compiler.
+  uintptr_t _satb_condition = 0;
+  uintptr_t _satb_base_address = 0;
+  uintptr_t _byte_map_base = 0;
+
  public:
   static ByteSize gc_data_offset() {
     return byte_offset_of(Thread, _gc_data);
@@ -156,6 +161,26 @@ class Thread: public ThreadShadow {
     STATIC_ASSERT(sizeof(T) <= sizeof(_gc_data));
     return reinterpret_cast<T*>(&_gc_data);
   }
+
+  static ByteSize satb_condition_offset() {
+    return byte_offset_of(Thread, _satb_condition);
+  }
+
+  static ByteSize satb_base_address_offset() {
+    return byte_offset_of(Thread, _satb_base_address);
+  }
+
+  static ByteSize byte_map_base_offset() {
+    return byte_offset_of(Thread, _byte_map_base);
+  }
+
+  uintptr_t satb_condition() { return _satb_condition; }
+  uintptr_t satb_base_address() { return _satb_base_address; }
+  uintptr_t byte_map_base() { return _byte_map_base; }
+
+  void set_satb_condition(uintptr_t satb_condition) { _satb_condition = satb_condition; }
+  void set_satb_base_address(uintptr_t satb_base_address) { _satb_base_address = satb_base_address; }
+  void set_byte_map_base(uintptr_t byte_map_base) { _byte_map_base = byte_map_base; }
 
   // Exception handling
   // (Note: _pending_exception and friends are in ThreadShadow)

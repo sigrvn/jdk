@@ -25,7 +25,6 @@
 #include "gc/shared/c2/barrierSetC2.hpp"
 #include "oops/accessDecorators.hpp"
 #include "gc/shared/barrierSet.hpp"
-#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "gc/agnostic/c2/agnosticBarrierSetC2.hpp"
 #include "opto/c2_globals.hpp"
 #include "opto/compile.hpp"
@@ -48,7 +47,12 @@ void AgnosticBarrierSetC2Logic::determine_barrier_data(C2Access& access) {
   bool no_keepalive = (decorators & AS_NO_KEEPALIVE) != 0;
 
   if (access.is_oop() && (in_heap || anonymous)) {
-    uint8_t barrier_data = tightly_coupled_alloc ? AgnosticBarrierElided : AgnosticBarrierRequired;
+    uint8_t barrier_data = AgnosticBarrierSATB | AgnosticBarrierCardMark;
+    if (tightly_coupled_alloc) {
+      access.set_barrier_data(AgnosticBarrierElided);
+      return;
+    }
+
     if (no_keepalive) {
       barrier_data |= AgnosticBarrierNokeepalive;
     }
@@ -89,44 +93,3 @@ void AgnosticCardTableBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   }
   masm.flush();
 }
-
-void AgnosticStoreBarrierStubC2::emit_code(MacroAssembler& masm) {
-  AgnosticBarrierSetAssembler* bsa = static_cast<AgnosticBarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
-  bsa->generate_store_barrier_stub_c2(&masm, this);
-}
-
-AgnosticStoreBarrierStubC2::AgnosticStoreBarrierStubC2(const MachNode* node, bool is_atomic, bool is_native, bool is_nokeepalive)
-  : BarrierStubC2(node),
-  _is_atomic(is_atomic),
-  _is_native(is_native),
-  _is_nokeepalive(is_nokeepalive) {}
-
-  AgnosticStoreBarrierStubC2* AgnosticStoreBarrierStubC2::create(const MachNode* node, bool is_atomic, bool is_native, bool is_nokeepalive) {
-    AgnosticStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) AgnosticStoreBarrierStubC2(node, is_atomic, is_native, is_nokeepalive);
-    if (!Compile::current()->output()->in_scratch_emit_size()) {
-      barrier_set_state()->stubs()->append(stub);
-    }
-    return stub;
-  }
-
-void AgnosticStoreBarrierStubC2::initialize_registers(Register src,
-    Register dst,
-    Register aux,
-    Register tmp1,
-    Register tmp2) {
-  _src = src;
-  _dst = dst;
-  _aux = aux;
-  _tmp1 = tmp1;
-  _tmp2 = tmp2;
-}
-
-Register AgnosticStoreBarrierStubC2::src() const { return _src; }
-Register AgnosticStoreBarrierStubC2::dst() const { return _dst; }
-Register AgnosticStoreBarrierStubC2::aux() const { return _aux; }
-Register AgnosticStoreBarrierStubC2::tmp1() const { return _tmp1; }
-Register AgnosticStoreBarrierStubC2::tmp2() const { return _tmp2; }
-
-bool AgnosticStoreBarrierStubC2::is_atomic() const { return _is_atomic; }
-bool AgnosticStoreBarrierStubC2::is_native() const { return _is_native; }
-bool AgnosticStoreBarrierStubC2::is_nokeepalive() const { return _is_nokeepalive; }

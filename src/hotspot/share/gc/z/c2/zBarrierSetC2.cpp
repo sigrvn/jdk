@@ -139,9 +139,9 @@ public:
 
   bool needs_liveness_data(const MachNode* mach) const {
     // Don't need liveness data for nodes without barriers
-    return UseAgnosticBarriers 
-      ? (mach->barrier_data() != AgnosticBarrierElided)
-      : (mach->barrier_data() != ZBarrierElided);
+    return UseAgnosticBarriers
+      ? mach->barrier_data() != AgnosticBarrierElided
+      : mach->barrier_data() != ZBarrierElided;
   }
 
   bool needs_livein_data() const {

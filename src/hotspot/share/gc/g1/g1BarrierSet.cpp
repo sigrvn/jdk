@@ -155,6 +155,12 @@ void G1BarrierSet::on_thread_attach(Thread* thread) {
   // is not visible to the handshake), so (re-)do the card table base address
   // assignment here.
   G1ThreadLocalData::set_byte_map_base(thread, G1CollectedHeap::heap()->card_table_base());
+
+  if (UseAgnosticBarriers) {
+    thread->set_satb_condition(satbq.is_active() ? G1_SATB : 0);
+    thread->set_satb_base_address(reinterpret_cast<uintptr_t>(&satbq));
+    thread->set_byte_map_base(reinterpret_cast<uintptr_t>(G1ThreadLocalData::byte_map_base(thread)));
+  }
 }
 
 void G1BarrierSet::on_thread_detach(Thread* thread) {

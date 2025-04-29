@@ -53,6 +53,9 @@ const int ZBarrierRelocationFormatMarkBadBeforeMov   = 1;
 const int ZBarrierRelocationFormatStoreGoodBeforeMov = 2;
 const int ZBarrierRelocationFormatStoreBadBeforeMov  = 3;
 
+// GC-agnostic pointer coloring.
+const int AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr = 4;
+
 class ZBarrierSetAssembler : public ZBarrierSetAssemblerBase {
 public:
   virtual void load_at(MacroAssembler* masm,

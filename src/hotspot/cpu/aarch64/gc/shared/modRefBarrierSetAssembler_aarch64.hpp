@@ -26,13 +26,13 @@
 #define CPU_AARCH64_GC_SHARED_MODREFBARRIERSETASSEMBLER_AARCH64_HPP
 
 #include "asm/macroAssembler.hpp"
-#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
+#include "gc/shared/barrierSetAssembler.hpp"
 
 // The ModRefBarrierSetAssembler filters away accesses on BasicTypes other
 // than T_OBJECT/T_ARRAY (oops). The oop accesses call one of the protected
 // accesses, which are overridden in the concrete BarrierSetAssembler.
 
-class ModRefBarrierSetAssembler: public AgnosticBarrierSetAssembler {
+class ModRefBarrierSetAssembler: public BarrierSetAssembler {
 protected:
   virtual void gen_write_ref_array_pre_barrier(MacroAssembler* masm, DecoratorSet decorators,
                                                Register addr, Register count, RegSet saved_regs) {}

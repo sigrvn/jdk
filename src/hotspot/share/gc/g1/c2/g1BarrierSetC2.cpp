@@ -392,9 +392,9 @@ public:
 
   bool needs_liveness_data(const MachNode* mach) const {
     return UseAgnosticBarriers
-      ? (mach->barrier_data() != AgnosticBarrierElided)
-      : (G1BarrierStubC2::needs_pre_barrier(mach) ||
-         G1BarrierStubC2::needs_post_barrier(mach));
+      ? mach->barrier_data() != AgnosticBarrierElided
+      : G1BarrierStubC2::needs_pre_barrier(mach) ||
+        G1BarrierStubC2::needs_post_barrier(mach);
   }
 
   bool needs_livein_data() const {

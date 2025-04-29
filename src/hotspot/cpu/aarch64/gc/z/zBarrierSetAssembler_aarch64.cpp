@@ -25,7 +25,6 @@
 #include "asm/macroAssembler.inline.hpp"
 #include "code/codeBlob.hpp"
 #include "code/vmreg.inline.hpp"
-#include "gc/agnostic/agnosticBarrierSetAssembler.hpp"
 #include "gc/z/zAddress.hpp"
 #include "gc/z/zBarrier.inline.hpp"
 #include "gc/z/zBarrierSet.hpp"
@@ -840,13 +839,6 @@ void ZBarrierSetAssembler::try_resolve_jobject_in_native(MacroAssembler* masm,
   BLOCK_COMMENT("} ZBarrierSetAssembler::try_resolve_jobject_in_native");
 }
 
-static void change_instruction(uint32_t& instr, uint32_t msb) {
-  uint32_t registers = instr & 0x1fu; // last 5 bits.
-  instr = msb;
-  instr &= ~31u; // (1 << 5) - 1
-  instr |= registers;
-}
-
 static void change_immediate(uint32_t& instr, uint32_t imm, uint32_t start, uint32_t end) {
   uint32_t imm_mask = ((1u << start) - 1u) ^ ((1u << (end + 1)) - 1u);
   instr &= ~imm_mask;
@@ -855,15 +847,6 @@ static void change_immediate(uint32_t& instr, uint32_t imm, uint32_t start, uint
 
 static uint16_t patch_barrier_relocation_value(int format) {
   switch (format) {
-    case AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd:
-      return (uint16_t)ZStoreBarrierBuffer::buffer_offset();
-
-    case AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeLdr:
-      return ((uint16_t)ZStoreBarrierBuffer::current_offset()) >> 3;
-
-    case AgnosticBarrierRelocationFormatSATBPointerBumpBeforeSub:
-      return (uint16_t)sizeof(ZStoreBarrierEntry);
-
     case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
       return (uint16_t)ZPointerLoadShift;
 
@@ -880,7 +863,7 @@ static uint16_t patch_barrier_relocation_value(int format) {
       return (uint16_t)ZPointerStoreBadMask;
 
     default:
-      return 0;
+      ShouldNotReachHere();
   }
 }
 
@@ -889,12 +872,6 @@ void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
   uint32_t* const patch_addr = (uint32_t*)addr;
 
   switch (format) {
-    case AgnosticBarrierRelocationFormatSATBPointerBumpBeforeSub:
-    case AgnosticBarrierRelocationFormatSATBIndexOffsetBeforeLdr:
-    case AgnosticBarrierRelocationFormatSATBBufferOffsetBeforeAdd:
-      change_immediate(*patch_addr, value, 10, 21);
-      break;
-
     case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
       change_immediate(*patch_addr, value, 10, 15);
       break;

@@ -95,7 +95,8 @@ BarrierStubC2::BarrierStubC2(const MachNode* node)
   : _node(node),
     _entry(),
     _continuation(),
-    _preserve(live()) {}
+    _preserve(live()),
+    _deferred_emit(false) {}
 
 Label* BarrierStubC2::entry() {
   // The _entry will never be bound when in_scratch_emit_size() is true.

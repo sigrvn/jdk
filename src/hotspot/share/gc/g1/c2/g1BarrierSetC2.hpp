@@ -55,6 +55,7 @@ private:
 
 protected:
   G1PreBarrierStubC2(const MachNode* node);
+  static void register_stub(G1PreBarrierStubC2* stub);
 
 public:
   static bool needs_barrier(const MachNode* node);

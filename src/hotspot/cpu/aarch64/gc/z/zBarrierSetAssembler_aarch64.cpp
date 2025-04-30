@@ -1225,10 +1225,10 @@ static bool aarch64_test_and_branch_reachable(int branch_offset, int target_offs
 }
 
 ZLoadBarrierStubC2Aarch64::ZLoadBarrierStubC2Aarch64(const MachNode* node, Address ref_addr, Register ref)
-  : ZLoadBarrierStubC2(node, ref_addr, ref), _test_and_branch_reachable_entry(), _offset(), _deferred_emit(false), _test_and_branch_reachable(false) {}
+  : ZLoadBarrierStubC2(node, ref_addr, ref), _test_and_branch_reachable_entry(), _offset(), _test_and_branch_reachable(false) {}
 
 ZLoadBarrierStubC2Aarch64::ZLoadBarrierStubC2Aarch64(const MachNode* node, Address ref_addr, Register ref, int offset)
-  : ZLoadBarrierStubC2(node, ref_addr, ref), _test_and_branch_reachable_entry(), _offset(offset), _deferred_emit(false), _test_and_branch_reachable(false) {
+  : ZLoadBarrierStubC2(node, ref_addr, ref), _test_and_branch_reachable_entry(), _offset(offset), _test_and_branch_reachable(false) {
     PhaseOutput* const output = Compile::current()->output();
     if (output->in_scratch_emit_size()) {
       return;
@@ -1320,7 +1320,7 @@ Label* ZLoadBarrierStubC2Aarch64::entry() {
 }
 
 ZStoreBarrierStubC2Aarch64::ZStoreBarrierStubC2Aarch64(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, bool is_nokeepalive)
-  : ZStoreBarrierStubC2(node, ref_addr, new_zaddress, new_zpointer, is_native, is_atomic, is_nokeepalive), _deferred_emit(false) {}
+  : ZStoreBarrierStubC2(node, ref_addr, new_zaddress, new_zpointer, is_native, is_atomic, is_nokeepalive) {}
 
   ZStoreBarrierStubC2Aarch64* ZStoreBarrierStubC2Aarch64::create(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, bool is_nokeepalive) {
     ZStoreBarrierStubC2Aarch64* const stub = new (Compile::current()->comp_arena()) ZStoreBarrierStubC2Aarch64(node, ref_addr, new_zaddress, new_zpointer, is_native, is_atomic, is_nokeepalive);

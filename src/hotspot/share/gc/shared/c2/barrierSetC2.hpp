@@ -240,6 +240,7 @@ protected:
   Label           _entry;
   Label           _continuation;
   RegMask         _preserve;
+  bool            _deferred_emit;
 
   // Registers that are live-in/live-out of the entire memory access
   // implementation (possibly including multiple barriers). Whether live-in or

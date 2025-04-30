@@ -315,6 +315,7 @@ void G1BarrierSetAssembler::generate_c2_pre_barrier_stub(MacroAssembler* masm,
   Register tmp1 = stub->tmp1();
   Register tmp2 = stub->tmp2();
 
+  __ block_comment("G1PreBarrierStubC2");
   __ bind(*stub->entry());
   generate_pre_barrier_slow_path(masm, obj, pre_val, thread, tmp1, tmp2, *stub->continuation(), runtime);
 

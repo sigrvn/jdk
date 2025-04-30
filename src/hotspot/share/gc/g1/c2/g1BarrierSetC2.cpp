@@ -71,10 +71,10 @@
  * has happened since the allocation.
  */
 bool G1BarrierSetC2::g1_can_remove_pre_barrier(GraphKit* kit,
-                                               PhaseValues* phase,
-                                               Node* adr,
-                                               BasicType bt,
-                                               uint adr_idx) {
+    PhaseValues* phase,
+    Node* adr,
+    BasicType bt,
+    uint adr_idx) {
   intptr_t offset = 0;
   Node* base = AddPNode::Ideal_base_and_offset(adr, phase, offset);
   AllocateNode* alloc = AllocateNode::Ideal_allocation(base);
@@ -118,8 +118,8 @@ bool G1BarrierSetC2::g1_can_remove_pre_barrier(GraphKit* kit,
       }
       if (st_base != base
           && MemNode::detect_ptr_independence(base, alloc, st_base,
-                                              AllocateNode::Ideal_allocation(st_base),
-                                              phase)) {
+            AllocateNode::Ideal_allocation(st_base),
+            phase)) {
         // Success: the bases are provably independent.
         mem = mem->in(MemNode::Memory);
         continue; // Advance through independent store memory.
@@ -134,8 +134,8 @@ bool G1BarrierSetC2::g1_can_remove_pre_barrier(GraphKit* kit,
         // Check that the initialization is storing null so that no previous store
         // has been moved up and directly write a reference.
         Node* captured_store = st_init->find_captured_store(offset,
-                                                            type2aelembytes(T_OBJECT),
-                                                            phase);
+            type2aelembytes(T_OBJECT),
+            phase);
         if (captured_store == nullptr || captured_store == st_init->zero_memory()) {
           return true;
         }
@@ -173,8 +173,8 @@ bool G1BarrierSetC2::g1_can_remove_pre_barrier(GraphKit* kit,
  * nursery; this would happen for humongous objects.
  */
 bool G1BarrierSetC2::g1_can_remove_post_barrier(GraphKit* kit,
-                                                PhaseValues* phase, Node* store_ctrl,
-                                                Node* adr) {
+    PhaseValues* phase, Node* store_ctrl,
+    Node* adr) {
   intptr_t      offset = 0;
   Node*         base   = AddPNode::Ideal_base_and_offset(adr, phase, offset);
   AllocateNode* alloc  = AllocateNode::Ideal_allocation(base);
@@ -256,7 +256,7 @@ static void refine_barrier_by_new_val_type(const Node* n) {
     barrier_data &= ~G1C2BarrierPost;
     barrier_data &= ~G1C2BarrierPostNotNull;
   } else if (((barrier_data & G1C2BarrierPost) != 0) &&
-             newval_type == TypePtr::NotNull) {
+      newval_type == TypePtr::NotNull) {
     // If the post-barrier has not been elided yet (e.g. due to newval being
     // freshly allocated), mark it as not-null (simplifies barrier tests and
     // compressed OOPs logic).
@@ -336,7 +336,7 @@ Node* G1BarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) co
     access.set_barrier_data(get_store_barrier(access));
     if (tightly_coupled_alloc) {
       assert(!use_ReduceInitialCardMarks(),
-             "post-barriers are only needed for tightly-coupled initialization stores when ReduceInitialCardMarks is disabled");
+          "post-barriers are only needed for tightly-coupled initialization stores when ReduceInitialCardMarks is disabled");
       // Pre-barriers are unnecessary for tightly-coupled initialization stores.
       access.set_barrier_data(access.barrier_data() & ~G1C2BarrierPre);
     }
@@ -349,7 +349,7 @@ Node* G1BarrierSetC2::store_at_resolved(C2Access& access, C2AccessValue& val) co
 }
 
 Node* G1BarrierSetC2::atomic_cmpxchg_val_at_resolved(C2AtomicParseAccess& access, Node* expected_val,
-                                                     Node* new_val, const Type* value_type) const {
+    Node* new_val, const Type* value_type) const {
   GraphKit* kit = access.kit();
   if (!access.is_oop()) {
     return BarrierSetC2::atomic_cmpxchg_val_at_resolved(access, expected_val, new_val, value_type);
@@ -359,7 +359,7 @@ Node* G1BarrierSetC2::atomic_cmpxchg_val_at_resolved(C2AtomicParseAccess& access
 }
 
 Node* G1BarrierSetC2::atomic_cmpxchg_bool_at_resolved(C2AtomicParseAccess& access, Node* expected_val,
-                                                      Node* new_val, const Type* value_type) const {
+    Node* new_val, const Type* value_type) const {
   GraphKit* kit = access.kit();
   if (!access.is_oop()) {
     return BarrierSetC2::atomic_cmpxchg_bool_at_resolved(access, expected_val, new_val, value_type);
@@ -384,7 +384,7 @@ private:
 public:
   G1BarrierSetC2State(Arena* arena)
     : BarrierSetC2State(arena),
-      _stubs(new (arena) GrowableArray<BarrierStubC2*>(arena, 8,  0, nullptr)) {}
+    _stubs(new (arena) GrowableArray<BarrierStubC2*>(arena, 8,  0, nullptr)) {}
 
   GrowableArray<BarrierStubC2*>* stubs() {
     return _stubs;
@@ -394,7 +394,7 @@ public:
     return UseAgnosticBarriers
       ? mach->barrier_data() != AgnosticBarrierElided
       : G1BarrierStubC2::needs_pre_barrier(mach) ||
-        G1BarrierStubC2::needs_post_barrier(mach);
+      G1BarrierStubC2::needs_post_barrier(mach);
   }
 
   bool needs_livein_data() const {
@@ -404,6 +404,12 @@ public:
 
 static G1BarrierSetC2State* barrier_set_state() {
   return reinterpret_cast<G1BarrierSetC2State*>(Compile::current()->barrier_set_state());
+}
+
+void G1PreBarrierStubC2::register_stub(G1PreBarrierStubC2* stub) {
+  if (!Compile::current()->output()->in_scratch_emit_size()) {
+    barrier_set_state()->stubs()->append(stub);
+  }
 }
 
 G1BarrierStubC2::G1BarrierStubC2(const MachNode* node) : BarrierStubC2(node) {}
@@ -428,9 +434,7 @@ bool G1PreBarrierStubC2::needs_barrier(const MachNode* node) {
 
 G1PreBarrierStubC2* G1PreBarrierStubC2::create(const MachNode* node) {
   G1PreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) G1PreBarrierStubC2(node);
-  if (!Compile::current()->output()->in_scratch_emit_size()) {
-    barrier_set_state()->stubs()->append(stub);
-  }
+  register_stub(stub);
   return stub;
 }
 
@@ -464,7 +468,17 @@ Register G1PreBarrierStubC2::tmp2() const {
 
 void G1PreBarrierStubC2::emit_code(MacroAssembler& masm) {
   G1BarrierSetAssembler* bs = static_cast<G1BarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
-  bs->generate_c2_pre_barrier_stub(&masm, this);
+  if (UseAgnosticBarriers) {
+    if (_deferred_emit) {
+      bs->generate_c2_pre_barrier_stub(&masm, this);
+      return;
+    }
+    // Defer emission of store barriers so that trampolines are emitted first
+    _deferred_emit = true;
+    register_stub(this);
+  } else {
+    bs->generate_c2_pre_barrier_stub(&masm, this);
+  }
 }
 
 void* G1BarrierSetC2::create_barrier_state(Arena* comp_arena) const {

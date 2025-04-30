@@ -54,11 +54,6 @@ JRT_LEAF(void, G1BarrierSetRuntime::write_ref_field_pre_entry(oopDesc* orig, Jav
   G1BarrierSet::satb_mark_queue_set().enqueue_known_active(queue, orig);
 JRT_END
 
-JRT_LEAF(void, G1BarrierSetRuntime::lol())
-  // store the original value that was in the field reference
-  printf("save\n");
-JRT_END
-
 JRT_LEAF(void, G1BarrierSetRuntime::clone(oopDesc* src, oopDesc* dst, size_t size))
   HeapAccess<>::clone(src, dst, size);
 JRT_END

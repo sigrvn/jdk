@@ -21,6 +21,7 @@
  * questions.
  */
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "precompiled.hpp"
 #include "gc/z/zBarrierSet.hpp"
 #include "gc/z/zBarrierSetAssembler.hpp"
@@ -101,6 +102,11 @@ void ZBarrierSet::on_thread_attach(Thread* thread) {
 }
 
 void ZBarrierSet::on_thread_detach(Thread* thread) {
+  // Flush the agnostic barrier buffers
+  if (thread->is_Java_thread()) {
+    ZAgnosticBarrierSetFlush closure;
+    closure.do_thread(thread);
+  }
   // Flush and free any remaining mark stacks
   ZHeap::heap()->mark_flush_and_free(thread);
 }

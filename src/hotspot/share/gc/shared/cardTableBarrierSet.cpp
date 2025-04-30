@@ -22,6 +22,7 @@
  *
  */
 
+#include "gc/shared/agnosticBarrierSetRuntime.hpp"
 #include "gc/shared/c2/agnosticBarrierSetC2.hpp"
 #include "precompiled.hpp"
 #include "compiler/compilerDefinitions.inline.hpp"
@@ -194,7 +195,6 @@ void CardTableBarrierSet::on_thread_destroy(Thread* thread) {
 
 void CardTableBarrierSet::on_thread_attach(Thread* thread) {
   BarrierSet::on_thread_attach(thread);
-  
 }
 
 void CardTableBarrierSet::on_thread_detach(Thread* thread) {
@@ -202,6 +202,10 @@ void CardTableBarrierSet::on_thread_detach(Thread* thread) {
   // card-table (or other remembered set structure) before GC starts
   // processing the card-table (or other remembered set).
   if (thread->is_Java_thread()) { // Only relevant for Java threads.
+    // Flush the agnostic barrier buffer
+    AgnosticBarrierSetFlush closure;
+    closure.do_thread(thread);
+
     flush_deferred_card_mark_barrier(JavaThread::cast(thread));
   }
 }

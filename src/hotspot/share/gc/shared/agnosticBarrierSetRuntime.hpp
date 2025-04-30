@@ -61,6 +61,7 @@ public:
 class G1AgnosticBarrierSetFlush : public ThreadClosure {
 public:
   virtual void do_thread(Thread* thread) {
+    assert(Universe::heap()->kind() == CollectedHeap::G1, "must be");
     AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
     CardTable::CardValue* table = G1ThreadLocalData::byte_map_base(thread);
     SATBMarkQueueSet* _qset = &G1BarrierSet::satb_mark_queue_set();
@@ -113,6 +114,7 @@ public:
 class ZAgnosticBarrierSetFlush : public ThreadClosure {
 public:
   virtual void do_thread(Thread* thread) {
+    assert(Universe::heap()->kind() == CollectedHeap::Z, "must be");
     ZStoreBarrierBuffer* zbuffer = ZThreadLocalData::store_barrier_buffer(thread);
     AgnosticStoreBarrierBuffer* buffer = AgnosticThreadLocalData::agnostic_store_barrier_buffer(thread);
 

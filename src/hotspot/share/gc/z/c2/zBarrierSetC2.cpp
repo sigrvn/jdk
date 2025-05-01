@@ -21,6 +21,8 @@
  * questions.
  */
 
+#include "gc/shared/c2/agnosticBarrierSetC2.hpp"
+#include "gc/shared/gc_globals.hpp"
 #include "precompiled.hpp"
 #include "asm/macroAssembler.hpp"
 #include "classfile/javaClasses.hpp"
@@ -170,21 +172,35 @@ static ZBarrierSetC2State* barrier_set_state() {
 
 void ZBarrierStubC2::register_stub(ZBarrierStubC2* stub) {
   if (!Compile::current()->output()->in_scratch_emit_size()) {
+    if (GCASB) {
+      AgnosticBarrierSetC2Logic::barrier_set_state()->zstubs()->append(stub);
+      return;
+    }
     barrier_set_state()->stubs()->append(stub);
   }
 }
 
 void ZBarrierStubC2::inc_trampoline_stubs_count() {
   if (!Compile::current()->output()->in_scratch_emit_size()) {
+    if (GCASB) {
+      AgnosticBarrierSetC2Logic::barrier_set_state()->inc_trampoline_stubs_count();
+      return;
+    }
     barrier_set_state()->inc_trampoline_stubs_count();
   }
 }
 
 int ZBarrierStubC2::trampoline_stubs_count() {
+  if (GCASB) {
+    return AgnosticBarrierSetC2Logic::barrier_set_state()->trampoline_stubs_count();
+  }
   return barrier_set_state()->trampoline_stubs_count();
 }
 
 int ZBarrierStubC2::stubs_start_offset() {
+  if (GCASB) {
+    return AgnosticBarrierSetC2Logic::barrier_set_state()->stubs_start_offset();
+  }
   return barrier_set_state()->stubs_start_offset();
 }
 

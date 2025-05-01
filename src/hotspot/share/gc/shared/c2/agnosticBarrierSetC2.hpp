@@ -44,9 +44,10 @@ public:
   static void write_barrier_data(C2Access& access);
   static void* create_barrier_state(Arena* comp_arena);
   static void emit_stubs(CodeBuffer& cb);
+  static void emit_zstubs(CodeBuffer& cb);
   static void eliminate_gc_barrier_data(Node* node);
 
-private:
+//private:
   static AgnosticBarrierSetC2State* barrier_set_state();
 };
 
@@ -125,15 +126,25 @@ public:
 
 class AgnosticBarrierSetC2State : public BarrierSetC2State {
 private:
-  GrowableArray<AgnosticBarrierStubC2*>* _stubs;
+  GrowableArray<BarrierStubC2*>* _stubs;
+  GrowableArray<ZBarrierStubC2*>* _zstubs;
+  int _trampoline_stubs_count;
+  int _stubs_start_offset;
 
 public:
   AgnosticBarrierSetC2State(Arena* arena)
     : BarrierSetC2State(arena),
-      _stubs(new (arena) GrowableArray<AgnosticBarrierStubC2*>(arena, 8,  0, nullptr)) {}
+      _stubs(new (arena) GrowableArray<BarrierStubC2*>(arena, 8,  0, nullptr)),
+      _zstubs(new (arena) GrowableArray<ZBarrierStubC2*>(arena, 8,  0, nullptr)),
+      _trampoline_stubs_count(0),
+      _stubs_start_offset(0) {}
 
-  GrowableArray<AgnosticBarrierStubC2*>* stubs() {
+  GrowableArray<BarrierStubC2*>* stubs() {
     return _stubs;
+  }
+
+  GrowableArray<ZBarrierStubC2*>* zstubs() {
+    return _zstubs;
   }
 
   bool needs_liveness_data(const MachNode* mach) const {
@@ -143,6 +154,23 @@ public:
 
   bool needs_livein_data() const {
     return true;
+  }
+
+  void inc_trampoline_stubs_count() {
+    assert(_trampoline_stubs_count != INT_MAX, "Overflow");
+    ++_trampoline_stubs_count;
+  }
+
+  int trampoline_stubs_count() {
+    return _trampoline_stubs_count;
+  }
+
+  void set_stubs_start_offset(int offset) {
+    _stubs_start_offset = offset;
+  }
+
+  int stubs_start_offset() {
+    return _stubs_start_offset;
   }
 };
 

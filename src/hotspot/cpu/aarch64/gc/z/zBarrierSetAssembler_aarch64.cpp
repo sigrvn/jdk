@@ -1209,7 +1209,6 @@ void ZBarrierSetAssembler::generate_c2_store_barrier_stub(MacroAssembler* masm, 
 
 // Only handles forward branch jumps, target_offset >= branch_offset
 static bool aarch64_test_and_branch_reachable(int branch_offset, int target_offset) {
-  return false;
   assert(branch_offset >= 0, "branch to stub offsets must be positive");
   assert(target_offset >= 0, "offset in stubs section must be positive");
   assert(target_offset >= branch_offset, "forward branches only, branch_offset -> target_offset");

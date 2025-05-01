@@ -22,6 +22,7 @@
  *
  */
 
+#include "gc/shared/c2/agnosticBarrierSetC2.hpp"
 #include "precompiled.hpp"
 #include "classfile/javaClasses.hpp"
 #include "code/vmreg.inline.hpp"
@@ -425,6 +426,10 @@ bool G1PreBarrierStubC2::needs_barrier(const MachNode* node) {
 G1PreBarrierStubC2* G1PreBarrierStubC2::create(const MachNode* node) {
   G1PreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) G1PreBarrierStubC2(node);
   if (!Compile::current()->output()->in_scratch_emit_size()) {
+    if (GCASB) {
+      AgnosticBarrierSetC2Logic::barrier_set_state()->stubs()->append(stub);
+      return stub;
+    }
     barrier_set_state()->stubs()->append(stub);
   }
   return stub;

@@ -61,7 +61,7 @@ void* AgnosticBarrierSetC2Logic::create_barrier_state(Arena* comp_arena) {
 
 void AgnosticBarrierSetC2Logic::emit_stubs(CodeBuffer& cb) {
   MacroAssembler masm(&cb);
-  GrowableArray<AgnosticBarrierStubC2*>* const stubs = barrier_set_state()->stubs();
+  GrowableArray<BarrierStubC2*>* const stubs = barrier_set_state()->stubs();
 
   for (int i = 0; i < stubs->length(); i++) {
     // Make sure there is enough space in the code buffer
@@ -71,6 +71,23 @@ void AgnosticBarrierSetC2Logic::emit_stubs(CodeBuffer& cb) {
     }
 
     stubs->at(i)->emit_code(masm);
+  }
+
+  masm.flush();
+}
+
+void AgnosticBarrierSetC2Logic::emit_zstubs(CodeBuffer& cb) {
+  MacroAssembler masm(&cb);
+  GrowableArray<ZBarrierStubC2*>* const zstubs = barrier_set_state()->zstubs();
+
+  for (int i = 0; i < zstubs->length(); i++) {
+    // Make sure there is enough space in the code buffer
+    if (cb.insts()->maybe_expand_to_ensure_remaining(PhaseOutput::MAX_inst_size) && cb.blob() == nullptr) {
+      ciEnv::current()->record_failure("CodeCache is full");
+      return;
+    }
+
+    zstubs->at(i)->emit_code(masm);
   }
 
   masm.flush();
@@ -99,6 +116,8 @@ void* ZAgnosticBarrierSetC2::create_barrier_state(Arena* comp_arena) const {
 
 void ZAgnosticBarrierSetC2::emit_stubs(CodeBuffer& cb) const {
   if (GCASB) {
+    // Emit ZGC stubs first to allow for trampolining calculation and emission
+    AgnosticBarrierSetC2Logic::emit_zstubs(cb);
     AgnosticBarrierSetC2Logic::emit_stubs(cb);
     return;
   }

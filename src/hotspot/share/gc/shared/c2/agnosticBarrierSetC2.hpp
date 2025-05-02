@@ -39,6 +39,8 @@ const uint8_t AgnosticElided  = 2;
 class AgnosticBarrierSetC2State;
 class AgnosticBarrierSetC2Logic : public AllStatic {
 friend class AgnosticStoreBarrierStubC2;
+friend class ZBarrierStubC2;
+friend class G1PreBarrierStubC2;
 
 public:
   static void write_barrier_data(C2Access& access);
@@ -47,7 +49,7 @@ public:
   static void emit_zstubs(CodeBuffer& cb);
   static void eliminate_gc_barrier_data(Node* node);
 
-//private:
+private:
   static AgnosticBarrierSetC2State* barrier_set_state();
 };
 

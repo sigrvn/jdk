@@ -76,7 +76,7 @@ CardTableBarrierSet::CardTableBarrierSet(CardTable* card_table) :
 
 void CardTableBarrierSet::on_thread_create(Thread* thread) {
   if (!UseG1GC && UseAgnosticBarriers) {
-    thread->set_byte_map_base(reinterpret_cast<uintptr_t>(_card_table->byte_map_base()));
+    thread->set_byte_map_base(_card_table->byte_map_base());
   }
 }
 

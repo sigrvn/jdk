@@ -70,7 +70,7 @@ public:
   static void create(Thread* thread) {
     new (data(thread)) ZThreadLocalData();
     if (UseAgnosticBarriers) {
-      thread->set_satb_base_address(reinterpret_cast<uintptr_t>(data(thread)->_store_barrier_buffer));
+      thread->set_satb_base_address(data(thread)->_store_barrier_buffer);
     }
   }
 

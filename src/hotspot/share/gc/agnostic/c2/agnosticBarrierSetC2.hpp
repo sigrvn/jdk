@@ -110,9 +110,9 @@ class AgnosticStoreBarrierStubC2 : public BarrierStubC2 {
 private:
   Register _src;  // g1:new_val,  z:rnew_zpointer
   Register _dst;  // g1:obj,      z:ref_addr
-  Register _aux;  // g1:pre_val,  z:rnew_zaddress
-  Register _tmp1; // g1:tmp1,     z:rtmp
-  Register _tmp2; // g1:tmp2
+  Register _tmp1; // g1:pre_val,  z:rnew_zaddress
+  Register _tmp2; // g1:tmp1,     z:rtmp
+  Register _tmp3; // g1:tmp2
 
   const bool _is_atomic;
   const bool _is_native;
@@ -125,21 +125,22 @@ public:
   static AgnosticStoreBarrierStubC2* create(const MachNode* node, bool is_atomic, bool is_native, bool is_nokeepalive);
   void initialize_registers(Register src,
       Register dst,
-      Register aux,
       Register tmp1,
-      Register tmp2);
+      Register tmp2,
+      Register tmp3);
 
   Register src() const;
   Register dst() const;
-  Register aux() const;
   Register tmp1() const;
   Register tmp2() const;
+  Register tmp3() const;
 
   bool is_atomic() const;
   bool is_native() const;
   bool is_nokeepalive() const;
 
   virtual void emit_code(MacroAssembler& masm);
+  static void register_stub(AgnosticStoreBarrierStubC2* stub);
 };
 
 class AgnosticBarrierSetC2State : public BarrierSetC2State {
@@ -164,7 +165,6 @@ public:
   }
 
   bool needs_livein_data() const {
-    // TODO: ZGC needs live-in data but G1 does not
     return true;
   }
 

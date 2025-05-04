@@ -34,7 +34,7 @@
 #include "utilities/debug.hpp"
 #include "utilities/sizes.hpp"
 
-#define G1_SATB UINTPTR_MAX
+const size_t G1ConcurrentMarkMask = UINTPTR_MAX;
 
 class G1ThreadLocalData {
 private:
@@ -49,9 +49,7 @@ private:
   G1ThreadLocalData() :
       _satb_mark_queue(&G1BarrierSet::satb_mark_queue_set()),
       _byte_map_base(G1CollectedHeap::heap()->card_table_base()),
-      _pin_cache() {
-        assert(_byte_map_base != nullptr, "must be");
-      }
+      _pin_cache() { assert(_byte_map_base != nullptr, "must be"); }
 
   static G1ThreadLocalData* data(Thread* thread) {
     assert(UseG1GC, "Sanity");
@@ -67,9 +65,9 @@ public:
     new (data(thread)) G1ThreadLocalData();
     if (UseAgnosticBarriers) {
       SATBMarkQueue& satbq = data(thread)->_satb_mark_queue;
-      thread->set_satb_condition(satbq.is_active() ? G1_SATB : 0);
-      thread->set_satb_base_address(reinterpret_cast<uintptr_t>(&satbq));
-      thread->set_byte_map_base(reinterpret_cast<uintptr_t>(data(thread)->_byte_map_base));
+      thread->set_satb_condition(satbq.is_active() ? G1ConcurrentMarkMask : 0);
+      thread->set_satb_base_address(&data(thread)->_satb_mark_queue);
+      thread->set_byte_map_base(data(thread)->_byte_map_base);
     }
   }
 
@@ -104,7 +102,7 @@ public:
   static void set_byte_map_base(Thread* thread, G1CardTable::CardValue* new_byte_map_base) {
     data(thread)->_byte_map_base = new_byte_map_base;
     if (UseAgnosticBarriers) {
-      thread->set_byte_map_base(reinterpret_cast<uintptr_t>(new_byte_map_base));
+      thread->set_byte_map_base(new_byte_map_base);
     }
   }
 

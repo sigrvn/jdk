@@ -200,7 +200,7 @@ void SATBMarkQueueSet::set_active_all_threads(bool active, bool expected_active)
       }
       queue.set_active(_active);
       if (UseAgnosticBarriers) {
-        t->set_satb_condition(_active ? G1_SATB : 0);
+        t->set_satb_condition(_active ? G1ConcurrentMarkMask : 0);
       }
     }
   } closure(this, active);

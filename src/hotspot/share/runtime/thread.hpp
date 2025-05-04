@@ -178,9 +178,17 @@ class Thread: public ThreadShadow {
   uintptr_t satb_base_address() { return _satb_base_address; }
   uintptr_t byte_map_base() { return _byte_map_base; }
 
-  void set_satb_condition(uintptr_t satb_condition) { _satb_condition = satb_condition; }
-  void set_satb_base_address(uintptr_t satb_base_address) { _satb_base_address = satb_base_address; }
-  void set_byte_map_base(uintptr_t byte_map_base) { _byte_map_base = byte_map_base; }
+  void set_satb_condition(uintptr_t satb_condition) {
+    _satb_condition = satb_condition; 
+  }
+
+  void set_satb_base_address(void* satb_base_address) {
+    _satb_base_address = reinterpret_cast<uintptr_t>(satb_base_address);
+  }
+
+  void set_byte_map_base(void* byte_map_base) {
+    _byte_map_base = reinterpret_cast<uintptr_t>(byte_map_base);
+  }
 
   // Exception handling
   // (Note: _pending_exception and friends are in ThreadShadow)

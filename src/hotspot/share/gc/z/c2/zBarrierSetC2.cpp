@@ -241,27 +241,27 @@ void ZLoadBarrierStubC2::emit_code(MacroAssembler& masm) {
   ZBarrierSet::assembler()->generate_c2_load_barrier_stub(&masm, static_cast<ZLoadBarrierStubC2*>(this));
 }
 
-ZStoreBarrierStubC2* ZStoreBarrierStubC2::create(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, bool is_nokeepalive) {
+ZStoreBarrierStubC2* ZStoreBarrierStubC2::create(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer, bool is_native, bool is_atomic, bool is_nokeepalive, Label* g1_entry) {
   AARCH64_ONLY(fatal("Should use ZStoreBarrierStubC2Aarch64::create"));
-  ZStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) ZStoreBarrierStubC2(node, ref_addr, new_zaddress, new_zpointer, is_native, is_atomic, is_nokeepalive);
+  ZStoreBarrierStubC2* const stub = new (Compile::current()->comp_arena()) ZStoreBarrierStubC2(node, ref_addr, new_zaddress, new_zpointer, is_native, is_atomic, is_nokeepalive, g1_entry);
   register_stub(stub);
-
   return stub;
 }
 
 ZStoreBarrierStubC2::ZStoreBarrierStubC2(const MachNode* node, Address ref_addr, Register new_zaddress, Register new_zpointer,
-    bool is_native, bool is_atomic, bool is_nokeepalive)
+    bool is_native, bool is_atomic, bool is_nokeepalive, Label* g1_entry)
   : ZBarrierStubC2(node),
   _ref_addr(ref_addr),
   _new_zaddress(new_zaddress),
   _new_zpointer(new_zpointer),
   _is_native(is_native),
   _is_atomic(is_atomic),
-  _is_nokeepalive(is_nokeepalive) {}
+  _is_nokeepalive(is_nokeepalive),
+  _g1_entry(g1_entry) {}
 
-  Address ZStoreBarrierStubC2::ref_addr() const {
-    return _ref_addr;
-  }
+Address ZStoreBarrierStubC2::ref_addr() const {
+  return _ref_addr;
+}
 
 Register ZStoreBarrierStubC2::new_zaddress() const {
   return _new_zaddress;
@@ -281,6 +281,10 @@ bool ZStoreBarrierStubC2::is_atomic() const {
 
 bool ZStoreBarrierStubC2::is_nokeepalive() const {
   return _is_nokeepalive;
+}
+
+Label* ZStoreBarrierStubC2::g1_entry() const {
+  return _g1_entry;
 }
 
 void ZStoreBarrierStubC2::emit_code(MacroAssembler& masm) {

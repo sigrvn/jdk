@@ -42,6 +42,9 @@ class ZStoreBarrierBuffer : public CHeapObj<mtGC> {
   friend class ZVerify;
 
 private:
+  // sizeof(ZStoreBarrierEntry) scaled index growing downwards
+  size_t             _current;
+
   static const size_t BufferLength    = 32;
   static const size_t BufferSizeBytes = BufferLength * sizeof(ZStoreBarrierEntry);
 
@@ -55,9 +58,6 @@ private:
 
   ZLock              _base_pointer_lock;
   zaddress_unsafe    _base_pointers[BufferLength];
-
-  // sizeof(ZStoreBarrierEntry) scaled index growing downwards
-  size_t             _current;
 
   void on_new_phase_relocate(size_t i);
   void on_new_phase_remember(size_t i);

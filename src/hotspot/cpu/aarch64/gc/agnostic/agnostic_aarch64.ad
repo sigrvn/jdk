@@ -30,91 +30,70 @@ source_hpp %{
 
 source %{
 
+// For all GCs, the source address to be stored will be in the "aux" register.
+// In G1, Serial, and Parallel, the value 0 will be moved into the "aux" register and
+// subsequently bitwise OR'd with the source address. This is semantically equivalent to a MOV (register)
+// which is an alias of ORR (shifted register) where the first source operand is the zero register and
+// the shift immediate is also zero.
+// In ZGC, the value of ZPointerStoreGoodMask is patched and the pointer is colored.
+static void agnostic_color(MacroAssembler* masm, Register dst, Register src) {
+  assert_different_registers(dst, src);
+  __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
+  __ movzw(dst, barrier_Relocation::unpatched);
+  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
+  __ orr(dst, dst, src, Assembler::LSL, (uint8_t)0); // ZGC: Patch to ZPointerLoadShift
+}
+
 static void agnostic_store_barrier(MacroAssembler* masm, const MachNode* node,
                                    Register src,  /* g1:new_val, z:rnew_zaddress */
                                    Register dst,  /* g1:obj,     z:ref_addr      */
-                                   Register aux,  /* g1:pre_val, z:rnew_zpointer */
-                                   Register tmp1, /* g1:tmp1,    z:rtmp          */
-                                   Register tmp2, /* g1:tmp2                     */
+                                   Register tmp1, /* g1:pre_val, z:rnew_zpointer */
+                                   Register tmp2, /* g1:tmp1,    z:rtmp          */
+                                   Register tmp3, /* g1:tmp2                     */
                                    bool is_atomic,
                                    RegSet preserve = RegSet(),
                                    RegSet no_preserve = RegSet()) {
-  __ block_comment("=== agnostic_store_barrier START ===");
   Assembler::InlineSkippedInstructionsCounter skip_counter(masm);
-
+  __ block_comment("=== agnostic_store_barrier START ===");
   if (node->barrier_data() == AgnosticBarrierElided) {
-    assert_different_registers(src, aux);
-    __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
-    __ movzw(aux, barrier_Relocation::unpatched);
-    __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
-    __ orr(aux, aux, src, Assembler::LSL, (uint8_t)0);
-    return;
+    agnostic_color(masm, tmp1, src);
+  } else {
+    const Address ref_addr = Address(dst);
+    assert_different_registers(ref_addr.base(), tmp1, tmp2);
+    assert_different_registers(ref_addr.index(), tmp1, tmp2);
+    assert_different_registers(src, tmp1, tmp2);
+
+    bool is_native = (node->barrier_data() & AgnosticBarrierNative) != 0;
+    bool is_nokeepalive = (node->barrier_data() & AgnosticBarrierNokeepalive) != 0;
+
+    AgnosticStoreBarrierStubC2* stub = AgnosticStoreBarrierStubC2::create(node, is_atomic, is_native, is_nokeepalive);
+    for (RegSetIterator<Register> reg = preserve.begin(); *reg != noreg; ++reg) {
+      stub->preserve(*reg);
+    }
+    for (RegSetIterator<Register> reg = no_preserve.begin(); *reg != noreg; ++reg) {
+      stub->dont_preserve(*reg);
+    }
+    stub->initialize_registers(src, dst, tmp1, tmp2, tmp3);
+
+    // Do card marking if on G1, Serial, or Parallel.
+    Label done;
+    Address card_table_addr(rthread, Thread::byte_map_base_offset());
+    __ ldr(tmp2, card_table_addr);              // tmp2 := card table base address
+    __ cbz(tmp2, done);
+    __ lsr(tmp1, dst, CardTable::card_shift()); // tmp1 := card address relative to card table base
+    __ add(tmp1, tmp1, tmp2);                   // tmp1 := card address
+    static_assert(CardTable::dirty_card_val() == 0, "must be to use zr");
+    __ strb(zr, Address(tmp1));                 // *(card address) := dirty_card_val
+    __ bind(done);
+
+    __ ldr(tmp1, ref_addr);
+    __ ldr(tmp2, Address(rthread, Thread::satb_condition_offset()));
+    __ tst(tmp1, tmp2);
+    __ br(Assembler::NE, *stub->entry());
+    __ bind(*stub->continuation());
+
+    agnostic_color(masm, tmp1, src);
   }
-
-  bool is_native = (node->barrier_data() & AgnosticBarrierNative) != 0;
-  bool is_nokeepalive = (node->barrier_data() & AgnosticBarrierNokeepalive) != 0;
-
-  G1PreBarrierStubC2* g1_stub = G1PreBarrierStubC2::create(node);
-  for (RegSetIterator<Register> reg = preserve.begin(); *reg != noreg; ++reg) {
-    g1_stub->preserve(*reg);
-  }
-  for (RegSetIterator<Register> reg = no_preserve.begin(); *reg != noreg; ++reg) {
-    g1_stub->dont_preserve(*reg);
-  }
-  g1_stub->initialize_registers(dst /*obj*/, aux /*pre_val*/, rthread, tmp1, tmp2);
-
-  ZStoreBarrierStubC2Aarch64* const z_stub = ZStoreBarrierStubC2Aarch64::create(node, dst /*ref_addr*/, src /*rnew_zaddress*/, aux /*rnew_zpointer*/, is_native, is_atomic, is_nokeepalive);
-
-  __ block_comment("Agnostic Store Barrier Fast Path");
-  const Address ref_addr = Address(dst);
-  assert_different_registers(ref_addr.base(), aux, tmp1);
-  assert_different_registers(ref_addr.index(), aux, tmp1);
-  assert_different_registers(src, aux, tmp1);
-
-  // In G1:
-  // - The value representing if SATB marking is active is loaded.
-  //   - If marking is NOT active: (tmp1 & aux) == 0, since aux = 0, thus Z=1
-  //   - If marking is active:     (tmp1 & aux) != 0, since aux = UINTPTR_MAX, thus Z=0
-  // In ZGC:
-  // - The value of ZPointerStoreBadMask is loaded and tested with the reference address.
-  // In Serial and Parallel:
-  // - The SATB condition is always 0, therefore the branch to the medium/slow path is never taken.
-  //   Proceed to card marking.
-  __ ldr(aux, Address(rthread, in_bytes(Thread::satb_condition_offset())));
-  __ cmpw(aux, G1_SATB);
-  __ br(Assembler::EQ, *g1_stub->entry());
-
-  __ ldr(tmp1, ref_addr);
-  __ tst(tmp1, aux);
-  __ br(Assembler::NE, *z_stub->entry());
-
-  __ bind(*g1_stub->continuation());
-  __ bind(*z_stub->continuation());
-
-  // For all GCs, the source address to be stored will be in the "aux" register.
-  // In G1, Serial, and Parallel, the value 0 will be moved into the "aux" register and
-  // subsequently bitwise OR'd with the source address. This is semantically equivalent to a MOV (register)
-  // which is an alias of ORR (shifted register) where the first source operand is the zero register and
-  // the shift immediate is also zero.
-  // In ZGC, the value of ZPointerStoreGoodMask is patched and the pointer is colored.
-  assert_different_registers(src, aux);
-  __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);
-  __ movzw(aux, barrier_Relocation::unpatched);
-  __ lsl(tmp2, aux, 1);
-  __ relocate(barrier_Relocation::spec(), AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr);
-  __ orr(aux, aux, src, Assembler::LSL, (uint8_t)0);
-
-  // Do card marking if on G1, Serial, or Parallel.
-  Label done;
-  __ cbnz(tmp2, done);
-  __ lsr(tmp1, dst, CardTable::card_shift()); // tmp1 := card address relative to card table base
-  Address card_table_addr(rthread, in_bytes(Thread::byte_map_base_offset()));
-  __ ldr(tmp2, card_table_addr);              // tmp2 := card table base address
-  __ add(tmp1, tmp1, tmp2);                   // tmp1 := card address
-  static_assert(CardTable::dirty_card_val() == 0, "must be to use zr");
-  __ strb(zr, Address(tmp1));                 // *(card address) := dirty_card_val
-  __ bind(done);
-
   __ block_comment("=== agnostic_store_barrier END ===");
 }
 

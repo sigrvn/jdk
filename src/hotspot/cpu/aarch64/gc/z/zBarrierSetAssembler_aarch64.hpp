@@ -55,6 +55,7 @@ const int ZBarrierRelocationFormatStoreBadBeforeMov  = 3;
 
 // GC-agnostic pointer coloring.
 const int AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr = 4;
+const int AgnosticBarrierRelocationFormatPointerBumpBeforeSub = 5;
 
 class ZBarrierSetAssembler : public ZBarrierSetAssemblerBase {
 public:

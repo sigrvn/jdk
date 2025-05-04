@@ -398,7 +398,7 @@ public:
   }
 
   bool needs_livein_data() const {
-    return false;
+    return UseAgnosticBarriers ? true : false;
   }
 };
 

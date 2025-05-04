@@ -21,6 +21,7 @@
  * questions.
  */
 
+#include "gc/g1/g1ThreadLocalData.hpp"
 #include "precompiled.hpp"
 #include "asm/macroAssembler.inline.hpp"
 #include "code/codeBlob.hpp"
@@ -850,6 +851,9 @@ static uint16_t patch_barrier_relocation_value(int format) {
     case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
       return (uint16_t)ZPointerLoadShift;
 
+    case AgnosticBarrierRelocationFormatPointerBumpBeforeSub:
+      return (uint16_t)sizeof(ZStoreBarrierEntry);
+
     case ZBarrierRelocationFormatLoadGoodBeforeTbX:
       return (uint16_t)exact_log2(ZPointerRemapped);
 
@@ -874,6 +878,10 @@ void ZBarrierSetAssembler::patch_barrier_relocation(address addr, int format) {
   switch (format) {
     case AgnosticBarrierRelocationFormatSrcPointerShiftBeforeOrr:
       change_immediate(*patch_addr, value, 10, 15);
+      break;
+
+    case AgnosticBarrierRelocationFormatPointerBumpBeforeSub:
+      change_immediate(*patch_addr, value, 10, 21);
       break;
 
     case ZBarrierRelocationFormatLoadGoodBeforeTbX:

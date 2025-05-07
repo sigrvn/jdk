@@ -468,17 +468,7 @@ Register G1PreBarrierStubC2::tmp2() const {
 
 void G1PreBarrierStubC2::emit_code(MacroAssembler& masm) {
   G1BarrierSetAssembler* bs = static_cast<G1BarrierSetAssembler*>(BarrierSet::barrier_set()->barrier_set_assembler());
-  if (UseAgnosticBarriers) {
-    if (_deferred_emit) {
-      bs->generate_c2_pre_barrier_stub(&masm, this);
-      return;
-    }
-    // Defer emission of store barriers so that trampolines are emitted first
-    _deferred_emit = true;
-    register_stub(this);
-  } else {
-    bs->generate_c2_pre_barrier_stub(&masm, this);
-  }
+  bs->generate_c2_pre_barrier_stub(&masm, this);
 }
 
 void* G1BarrierSetC2::create_barrier_state(Arena* comp_arena) const {

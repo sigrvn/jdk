@@ -30,12 +30,6 @@ source_hpp %{
 
 source %{
 
-// For all GCs, the source address to be stored will be in the "aux" register.
-// In G1, Serial, and Parallel, the value 0 will be moved into the "aux" register and
-// subsequently bitwise OR'd with the source address. This is semantically equivalent to a MOV (register)
-// which is an alias of ORR (shifted register) where the first source operand is the zero register and
-// the shift immediate is also zero.
-// In ZGC, the value of ZPointerStoreGoodMask is patched and the pointer is colored.
 static void agnostic_color(MacroAssembler* masm, Register dst, Register src) {
   assert_different_registers(dst, src);
   __ relocate(barrier_Relocation::spec(), ZBarrierRelocationFormatStoreGoodBeforeMov);

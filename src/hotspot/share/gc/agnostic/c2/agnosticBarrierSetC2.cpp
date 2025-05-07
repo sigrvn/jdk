@@ -295,6 +295,7 @@ static void generate_z_slow_path(MacroAssembler& masm, AgnosticStoreBarrierStubC
 }
 
 static void generate_c2_store_barrier_stub(MacroAssembler& masm, AgnosticStoreBarrierStubC2* stub) {
+  Assembler::InlineSkippedInstructionsCounter skip_counter(&masm);
   Register src = stub->src();
   Register dst = stub->dst();
   Register tmp1 = stub->tmp1();
